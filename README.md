@@ -68,6 +68,18 @@ bands allowed here = 1 + (Number of lines - 1) x Shading x darkness ^ Shading fa
 Band 0 is always allowed, so the subject never loses its outline. At
 **Shading** 0 every region keeps exactly one contour, whatever the tone.
 
+Tonality gets only a light blur, enough to kill grain. **Depth smoothing**
+exists to make the *surface* continuous for the streamline tracer and runs to
+tens of pixels; applying it here would average the tonality across the whole
+band stack, so a contour sitting just inside a dark subject would sample a
+tone half-mixed with the background and lose its shading.
+
+The band count scales with **Number of lines**, not with one less than it.
+Dividing the darkness range into `n - 1` steps means the outermost band only
+appears at darkness exactly 1 — pure black after blur and contrast, which
+almost nothing in a photograph is — so at two lines the second one never
+appeared at all.
+
 Tonality is deliberately taken from the raw luminance and is never inverted.
 **Invert depth** exists to say which side of the threshold is the subject,
 which is a separate question from which parts of the picture are dark —
@@ -169,6 +181,7 @@ drawDot(ctx, x, y, size, rotation, type)
 | `line`     | a capsule — the most directional of the set |
 | `custom`   | any uploaded SVG, normalised to the unit box |
 | `tones`    | three uploaded SVGs, chosen per dot by depth |
+| `nodes`    | two uploaded SVGs, chosen per dot by position along the line |
 
 Uploading an SVG collects its `path` / `circle` / `rect` / `ellipse` /
 `polygon` / `polyline` / `line` elements and fits them into the unit box. The
@@ -191,6 +204,33 @@ and honoured, inheriting from ancestor `<g>`s — icon sets routinely set
 child. In the export, stroked parts take their colour from `currentColor`,
 which the enclosing colour group sets alongside `fill`, so one group still
 drives every dot in a bucket.
+
+### Node + link
+
+![the same contour at three node intervals](docs/node-link.png)
+
+A different question from the tone slots. Those ask *how dark is it here*;
+this asks *where am I along this line*. One shape lands every Nth step and the
+other fills the run between, so a contour reads as marked points joined by a
+dotted rule rather than as an undifferentiated stream of dots.
+
+Two slots, **Node** and **Link**, both taking SVG uploads and both falling
+back to a plain circle — so the mode is usable before any upload, since small
+dots with a bigger one every Nth step is already the figure.
+
+- **Node every** — steps between nodes. Everything in between is a link.
+- **Node scale** — how much bigger a node is than a link.
+
+Each line starts on a node rather than a random phase, which also terminates
+an open contour with one instead of cutting off mid-run. Links are suppressed
+within about one node radius of the node just placed, so a node reads as a
+marked point with the run starting after it rather than as a blob with dots
+buried in its edge — that clearance is why the link-to-node ratio comes out
+slightly under `Node every - 1`.
+
+One thing to watch: if your two shapes already carry their relative size on a
+shared artboard, set **Node scale** to 1, or **Scale to artboard** will count
+the difference twice and the link will shrink towards invisibility.
 
 ### Tone-mapped shapes
 
@@ -332,7 +372,8 @@ photograph into a continuous surface — contours need this).
 the base angle, 1 = pure depth contours), Flow distortion, Base angle, Flow
 coherence.
 
-**Dots** — Shape, Scale to artboard, Dark → mid, Mid → bright, Dot size,
+**Dots** — Shape, Scale to artboard, Node every, Node scale, Dark → mid,
+Mid → bright, Dot size,
 Size variation, Size by tone, Size falloff, Dot spacing, Randomness, and
 (Surface only) Edge falloff and Edge width.
 

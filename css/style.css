@@ -221,13 +221,13 @@ input[type=color] {
 }
 
 /* tone-mapped shape slots */
-.tone-uploads {
+.slot-uploads {
   margin-top: 10px;
   padding-top: 9px;
   border-top: 1px dashed var(--line);
 }
-.tone-uploads .help { margin: 0 0 8px; }
-.tone-uploads .upload-row { margin-top: 6px; }
+.slot-uploads .help { margin: 0 0 8px; }
+.slot-uploads .upload-row { margin-top: 6px; }
 .tone-slot { min-width: 62px; text-align: center; }
 .tone-count {
   margin-left: auto;
@@ -239,3 +239,4 @@ input[type=color] {
 
 .seg { margin-top: 7px; }
 .seg .shape-btn { flex: 1; }
+.pair-slot { min-width: 62px; text-align: center; }

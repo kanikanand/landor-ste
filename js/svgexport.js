@@ -62,11 +62,11 @@ var CD = window.CD || {};
     }
 
     var glow = opts.glowAmount > 0.001 && opts.glowRadius > 0.001;
-    var toneMode = opts.shapeType === 'tones';
+    var perDot = opts.shapeType === 'tones' || opts.shapeType === 'nodes';
 
     /* Shapes are emitted into <defs> on demand: in tone mode a render can use
-     * up to three different primitives, and only the ones actually placed
-     * should end up in the file. */
+     * several different primitives, and only the ones actually placed should
+     * end up in the file. */
     var defs = [];
     var used = {};
 
@@ -112,7 +112,7 @@ var CD = window.CD || {};
       body.push('<g fill="' + col + '" color="' + col + '">');
       for (i = 0; i < list.length; i++) {
         var dt = list[i];
-        var type = toneMode ? CD.shapeTypeForDepth(opts, dt.d) : opts.shapeType;
+        var type = perDot ? CD.shapeTypeForDot(opts, dt) : opts.shapeType;
         var sh = CD.getShape(type);
 
         if (sh.round && !sh.custom) {

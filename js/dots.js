@@ -28,6 +28,12 @@ var CD = window.CD || {};
     var p = ctx.params;
     var rng = ctx.rng;
 
+    /* Node + link: one shape lands every Nth step along the line, the other
+     * fills the run between them. */
+    var pairMode = p.shapeType === 'nodes';
+    var nodeEvery = Math.max(2, Math.round(p.nodeEvery));
+    var nodeScale = Math.max(0.1, p.nodeScale);
+
     var bandLimit = ctx.bandLimit || null;   // edge mode: tone gates the bands
     var valueField = ctx.valueField || depth; // what `d` means for this mode
     var uniformSpacing = !!ctx.uniformSpacing;
@@ -47,7 +53,17 @@ var CD = window.CD || {};
       var band = line.band || 0;
       if (!pts || pts.length < 4) continue;
 
-      var carry = rng() * spacingBase; // desync the phase of each line
+      /* Normally each line starts on a random phase so the dots do not comb
+       * into rows. In node/link mode the phase is the rhythm, so every line
+       * starts on a node instead — which also terminates open contours with
+       * one rather than cutting off mid-run. */
+      var carry = pairMode ? 0 : rng() * spacingBase;
+      var idx = 0;                 // step count along this line
+      var arc = 0;                 // arc length walked so far
+      var segStart = 0;            // arc length at the start of this segment
+      var lastNodeArc = -1e9;
+      var lastNodeSize = 0;
+
       for (var i = 0; i < pts.length - 2; i += 2) {
         var ax = pts[i], ay = pts[i + 1];
         var bx = pts[i + 2], by = pts[i + 3];
@@ -58,6 +74,7 @@ var CD = window.CD || {};
 
         var t = carry;
         while (t < segLen) {
+          arc = segStart + t;
           var x = ax + ux * t, y = ay + uy * t;
           var fx = x * s, fy = y * s;
           var m = mask.sample(fx, fy, 0);
@@ -88,7 +105,28 @@ var CD = window.CD || {};
            * fuse into a solid line and the halftone reads as fill. */
           var localSpacing = uniformSpacing ? spacingBase : spacingBase * lerp(1.5, 0.68, d);
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
+          /* The spacing floor uses the link size, before any node scaling: a
+           * node is meant to sit proud of the run, not to push its neighbours
+           * apart and break the rhythm. */
           localSpacing = Math.max(size * 2.15, localSpacing);
+
+          var role = null;
+          if (pairMode) {
+            if (idx % nodeEvery === 0) {
+              role = 'node';
+              size *= nodeScale;
+            } else {
+              role = 'link';
+              /* Keep clear of the node just placed, so it reads as a marked
+               * point with the run starting after it rather than as a blob
+               * with dots buried in its edge. */
+              if (arc - lastNodeArc < (lastNodeSize + size) * 0.95) {
+                idx++;
+                t += localSpacing;
+                continue;
+              }
+            }
+          }
 
           /* In edge mode the contours deliberately run out into the
            * background, so the silhouette mask must not cull them; the tone
@@ -130,12 +168,15 @@ var CD = window.CD || {};
               px += ux * jt; py += uy * jt;
             }
 
-            dots.push({ x: px, y: py, s: size, r: rot, d: d });
+            if (role === 'node') { lastNodeArc = arc; lastNodeSize = size; }
+            dots.push({ x: px, y: py, s: size, r: rot, d: d, role: role });
             if (dots.length >= maxDots) break;
           }
+          idx++;
           t += localSpacing;
         }
         carry = t - segLen;
+        segStart += segLen;
       }
     }
 

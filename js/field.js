@@ -78,7 +78,12 @@ var CD = window.CD || {};
      *     which is a separate question from which parts of the picture are
      *     dark. Gating the shading on an inverted tone would put the banding
      *     in the highlights. */
-    tone.blur(p.depthSmoothing, 3);
+    /* Only enough blur to kill grain. Depth smoothing exists to make the
+     * *surface* continuous for streamline tracing and runs to tens of pixels;
+     * applying it here would average the tonality across the whole band stack,
+     * so a contour sitting just inside a dark subject would sample a tone
+     * half-mixed with the background and lose its shading. */
+    tone.blur(clamp(Math.round(p.depthSmoothing * 0.25), 1, 4), 2);
 
     /* 5. threshold carves the negative space. Everything under the threshold
      *    is *nothing* — pure background, not a dark dot. The remaining range

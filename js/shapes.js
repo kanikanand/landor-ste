@@ -153,6 +153,29 @@ var CD = window.CD || {};
 
   function toneKey(slot) { return 'tone-' + slot; }
 
+  /* --------------------------------------------------------------------------
+   * Node + link.
+   *
+   * A different question from the tone slots. Those ask "how dark is it here";
+   * this asks "where am I along this line". One shape lands every Nth step and
+   * the other fills the run between, so a contour reads as marked points joined
+   * by a dotted rule rather than as an undifferentiated stream of dots.
+   * ------------------------------------------------------------------------*/
+  var PAIR_SLOTS = ['node', 'link'];
+
+  function pairKey(slot) { return 'pair-' + slot; }
+
+  function setPairShape(slot, shape) { registry[pairKey(slot)] = shape; }
+  function hasPairShape(slot) { return !!registry[pairKey(slot)]; }
+
+  /* Both slots fall back to a plain circle, so the mode is usable before any
+   * upload: small dots with a bigger one every Nth step is already the
+   * reference figure. */
+  function pairTypeFor(role) {
+    var k = pairKey(role);
+    return registry[k] ? k : 'circle';
+  }
+
   function setToneShape(slot, shape) { registry[toneKey(slot)] = shape; }
   function hasToneShape(slot) { return !!registry[toneKey(slot)]; }
   function anyToneShape() {
@@ -168,6 +191,14 @@ var CD = window.CD || {};
   function toneSlotForDepth(d, a, b) {
     var lo = a < b ? a : b, hi = a < b ? b : a;
     return d < lo ? 'dark' : (d < hi ? 'mid' : 'bright');
+  }
+
+  /* The registry key one dot should be drawn with. Role is set by the dot
+   * builder for node/link mode, where position along the line decides the
+   * shape; everything else resolves from depth. */
+  function shapeTypeForDot(p, dot) {
+    if (p.shapeType === 'nodes') return pairTypeFor(dot.role === 'node' ? 'node' : 'link');
+    return shapeTypeForDepth(p, dot.d);
   }
 
   /* The registry key a dot of depth `d` should be drawn with. Returns
@@ -410,6 +441,10 @@ var CD = window.CD || {};
   CD.hasCustomShape = hasCustomShape;
   CD.applyFit = applyFit;
   CD.setToneShape = setToneShape;
+  CD.setPairShape = setPairShape;
+  CD.hasPairShape = hasPairShape;
+  CD.shapeTypeForDot = shapeTypeForDot;
+  CD.PAIR_SLOTS = PAIR_SLOTS;
   CD.hasToneShape = hasToneShape;
   CD.anyToneShape = anyToneShape;
   CD.shapeTypeForDepth = shapeTypeForDepth;

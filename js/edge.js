@@ -26,9 +26,14 @@ var CD = window.CD || {};
     var n = Math.max(1, Math.round(params.lineCount));
     var amount = clamp(params.shading, 0, 1);
     var falloff = Math.max(0.05, params.shadingFalloff);
+    /* Scale by n, not n-1. Dividing the darkness range into (n-1) steps means
+     * the outermost band only appears at darkness exactly 1 — pure black after
+     * blur and contrast, which almost nothing is — so at two lines the second
+     * one never showed at all. Scaling by n leaves headroom, so every band is
+     * reachable within the tones a real photograph actually contains. */
     return function (fx, fy) {
       var darkness = 1 - clamp(tone.sample(fx, fy, 0), 0, 1);
-      return 1 + (n - 1) * amount * Math.pow(darkness, falloff);
+      return 1 + n * amount * Math.pow(darkness, falloff);
     };
   }
 

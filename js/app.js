@@ -250,9 +250,10 @@ var CD = window.CD || {};
       b = (dots[i].d * buckets) | 0;
       groups[b < 0 ? 0 : (b > buckets - 1 ? buckets - 1 : b)].push(dots[i]);
     }
-    /* In tone mode the primitive is resolved per dot from its depth; otherwise
-     * it is the same for all of them and the lookup is hoisted out. */
-    var toneMode = p.shapeType === 'tones';
+    /* Tone mode resolves the primitive per dot from its depth, node/link mode
+     * from its position along the line; otherwise it is the same for every dot
+     * and the lookup is hoisted out. */
+    var perDot = p.shapeType === 'tones' || p.shapeType === 'nodes';
     for (b = 0; b < buckets; b++) {
       var list = groups[b];
       if (!list.length) continue;
@@ -261,7 +262,7 @@ var CD = window.CD || {};
       for (i = 0; i < list.length; i++) {
         var d = list[i];
         CD.drawDot(c2d, d.x, d.y, d.s, d.r,
-          toneMode ? CD.shapeTypeForDepth(p, d.d) : p.shapeType);
+          perDot ? CD.shapeTypeForDot(p, d) : p.shapeType);
       }
     }
   }
@@ -483,6 +484,8 @@ var CD = window.CD || {};
       glowRadius: p.glowRadius,
       toneSplitLow: p.toneSplitLow,
       toneSplitHigh: p.toneSplitHigh,
+      nodeEvery: p.nodeEvery,
+      nodeScale: p.nodeScale,
       image: (p.showImage && p.embedImage && state.srcCanvas) ? imageDataURL() : null,
       imageOpacity: p.imageOpacity,
       title: state.srcName + ' — contour dots'
@@ -525,7 +528,13 @@ var CD = window.CD || {};
       fr.onload = function () {
         try {
           var shape = CD.shapeFromSVG(fr.result, f.name);
-          if (slot) {
+          if (slot && CD.PAIR_SLOTS.indexOf(slot) >= 0) {
+            CD.setPairShape(slot, shape);
+            state.params.shapeType = 'nodes';
+            if (ui.refs.shapeType.pairLoaded) ui.refs.shapeType.pairLoaded(slot, f.name);
+            ui.refs.shapeType.set('nodes');
+            status(slot + ' shape set from ' + f.name);
+          } else if (slot) {
             CD.setToneShape(slot, shape);
             state.params.shapeType = 'tones';
             if (ui.refs.shapeType.toneLoaded) ui.refs.shapeType.toneLoaded(slot, f.name);

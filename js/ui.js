@@ -63,8 +63,8 @@ var CD = window.CD || {};
           help: 'Which side of the edge the extra contours step towards.' },
         { key: 'shading', label: 'Shading', min: 0, max: 1, step: 0.01, def: 1, stage: 'dots', modes: ['edge'],
           help: 'How much the darks earn extra contours. At 0 every region keeps a single line.' },
-        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1.5, stage: 'dots', modes: ['edge'],
-          help: 'Higher confines the shading to the deepest darks.' },
+        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'dots', modes: ['edge'],
+          help: 'Higher confines the shading to the deepest darks; lower lets mid-tones earn bands too.' },
         { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines', modes: ['surface'] },
         { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines' },
         { key: 'flowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow', modes: ['surface'],
@@ -84,6 +84,12 @@ var CD = window.CD || {};
           help: 'Size uploaded shapes by their artboard, not their ink — so a set ' +
                 'exported from one canvas keeps its relative weights. Off fits each ' +
                 'shape to the dot.' },
+        { key: 'nodeEvery', label: 'Node every', min: 2, max: 40, step: 1, def: 8, stage: 'dots',
+          help: 'Steps between nodes. Everything in between is a link. Node + link mode only.' },
+        { key: 'nodeScale', label: 'Node scale', min: 1, max: 8, step: 0.1, def: 2.6, stage: 'dots',
+          help: 'How much bigger a node is than a link. Set it to 1 if your two ' +
+                'shapes already carry their relative size on a shared artboard, ' +
+                'or Scale to artboard will count it twice.' },
         { key: 'toneSplitLow', label: 'Dark \u2192 mid', min: 0, max: 1, step: 0.01, def: 0.33, stage: 'draw',
           help: 'Depth below this uses the dark shape. Tones mode only.' },
         { key: 'toneSplitHigh', label: 'Mid \u2192 bright', min: 0, max: 1, step: 0.01, def: 0.66, stage: 'draw',
@@ -256,6 +262,7 @@ var CD = window.CD || {};
           tonesBtn.classList.add('custom-btn');
           tonesBtn.disabled = !CD.anyToneShape();
           wrap.appendChild(tonesBtn);
+          wrap.appendChild(mk('nodes', 'Node + link'));
           row.appendChild(wrap);
 
           /* one shape for every dot */
@@ -267,25 +274,39 @@ var CD = window.CD || {};
           up.appendChild(upName);
           row.appendChild(up);
 
-          /* one shape per tonal band of the depth field */
-          var toneWrap = el('div', 'tone-uploads');
-          toneWrap.appendChild(el('p', 'help', 'Or upload one shape per tone — ' +
-            'the dot primitive then changes with the depth of the surface.'));
-          var toneNames = {};
-          CD.TONE_SLOTS.forEach(function (slot) {
-            var trow = el('div', 'upload-row');
-            var tbtn = el('button', 'mini tone-slot',
-              slot.charAt(0).toUpperCase() + slot.slice(1));
-            tbtn.addEventListener('click', function () { hooks.pickShape(slot); });
-            trow.appendChild(tbtn);
-            var tname = el('span', 'file-name', 'none');
-            trow.appendChild(tname);
-            var tcount = el('span', 'tone-count', '');
-            trow.appendChild(tcount);
-            toneNames[slot] = { name: tname, count: tcount };
-            toneWrap.appendChild(trow);
-          });
-          row.appendChild(toneWrap);
+          /* Slot uploads. Two independent sets: one shape per tonal band, and
+           * the node/link pair. Same rows, different question. */
+          function slotBlock(slots, cls, note, withCount) {
+            var wrap = el('div', 'slot-uploads');
+            wrap.appendChild(el('p', 'help', note));
+            var refsBySlot = {};
+            slots.forEach(function (slot) {
+              var trow = el('div', 'upload-row');
+              var tbtn = el('button', 'mini ' + cls,
+                slot.charAt(0).toUpperCase() + slot.slice(1));
+              tbtn.addEventListener('click', function () { hooks.pickShape(slot); });
+              trow.appendChild(tbtn);
+              var tname = el('span', 'file-name', 'none');
+              trow.appendChild(tname);
+              var tcount = null;
+              if (withCount) {
+                tcount = el('span', 'tone-count', '');
+                trow.appendChild(tcount);
+              }
+              refsBySlot[slot] = { name: tname, count: tcount };
+              wrap.appendChild(trow);
+            });
+            row.appendChild(wrap);
+            return refsBySlot;
+          }
+
+          var toneNames = slotBlock(CD.TONE_SLOTS, 'tone-slot',
+            'Tones: one shape per tonal band — the primitive changes with how ' +
+            'dark the picture is.', true);
+
+          var pairNames = slotBlock(CD.PAIR_SLOTS, 'pair-slot',
+            'Node + link: one shape lands every Nth step along the line, the ' +
+            'other fills the run between. Both fall back to a circle.', false);
 
           refs[c.key] = {
             set: function (v) {
@@ -300,6 +321,9 @@ var CD = window.CD || {};
             toneLoaded: function (slot, name) {
               tonesBtn.disabled = false;
               if (toneNames[slot]) toneNames[slot].name.textContent = name;
+            },
+            pairLoaded: function (slot, name) {
+              if (pairNames[slot]) pairNames[slot].name.textContent = name;
             },
             /* Live dot count per band, so a band that is empty — or one that
              * has swallowed everything — is visible without guessing. */
