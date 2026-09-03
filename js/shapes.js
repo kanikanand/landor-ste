@@ -73,6 +73,15 @@ var CD = window.CD || {};
     return p;
   };
 
+  /* Uploaded shapes carry two normalisations and can switch between them
+   * without being re-parsed. Swapping invalidates the cached Path2D. */
+  Shape.prototype.setFit = function (mode) {
+    var f = (mode === 'ink' ? this._ink : this._box) || this._ink;
+    if (!f || (this.nsx === f.nsx && this.cx === f.cx && this.cy === f.cy)) return;
+    this.nsx = f.nsx; this.nsy = f.nsy; this.cx = f.cx; this.cy = f.cy;
+    this._path = null;
+  };
+
   /* The transform that maps the raw path into the unit box, as an SVG string.
    * Empty for shapes that are already normalised. */
   Shape.prototype.normTransform = function () {
@@ -117,6 +126,15 @@ var CD = window.CD || {};
     mid: ['mid', 'bright', 'dark'],
     bright: ['bright', 'mid', 'dark']
   };
+
+  /* Switch every uploaded shape between the two normalisations. Cheap — there
+   * are at most four — so it runs on each paint rather than needing its own
+   * invalidation path. */
+  function applyFit(mode) {
+    Object.keys(registry).forEach(function (k) {
+      if (registry[k].custom) registry[k].setFit(mode);
+    });
+  }
 
   function toneKey(slot) { return 'tone-' + slot; }
 
@@ -215,6 +233,25 @@ var CD = window.CD || {};
     }
   }
 
+  /* The SVG's own artboard — viewBox first, then width/height. This is the
+   * frame the designer drew in, and the only thing that relates one exported
+   * asset to another. */
+  function artboardOf(svg) {
+    var vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/);
+    if (vb.length === 4) {
+      var n = vb.map(parseFloat);
+      if (n.every(isFinite) && n[2] > 0 && n[3] > 0) {
+        return { x: n[0], y: n[1], width: n[2], height: n[3] };
+      }
+    }
+    var w = parseFloat(svg.getAttribute('width'));
+    var h = parseFloat(svg.getAttribute('height'));
+    if (isFinite(w) && isFinite(h) && w > 0 && h > 0) {
+      return { x: 0, y: 0, width: w, height: h };
+    }
+    return null;
+  }
+
   /* Parse SVG source text into a Shape. Throws with a readable message. */
   function shapeFromSVG(text, name) {
     var doc = new DOMParser().parseFromString(text, 'image/svg+xml');
@@ -255,17 +292,39 @@ var CD = window.CD || {};
       throw new Error('That SVG has no measurable area.');
     }
 
-    /* Fit the longest side into the unit box, keeping aspect ratio. */
-    var s = 2 / Math.max(bb.width, bb.height);
+    /* Two ways to normalise into the unit box, both kept:
+     *
+     *   ink   — fit the drawn marks. Right for a lone shape, which should
+     *           fill the dot whatever its artboard happens to be.
+     *   box   — fit the artboard. Right for a *set*: three halftone assets
+     *           exported from one artboard differ precisely in how much of
+     *           that artboard they fill, and fitting each to its own ink
+     *           throws that away, rendering a small dot and a big ring at
+     *           exactly the same size. That difference is the tonality.
+     */
+    var si = 2 / Math.max(bb.width, bb.height);
+    var ink = { nsx: si, nsy: si, cx: bb.x + bb.width / 2, cy: bb.y + bb.height / 2 };
+
+    var ab = artboardOf(svg);
+    var box = null;
+    if (ab) {
+      var sb = 2 / Math.max(ab.width, ab.height);
+      box = { nsx: sb, nsy: sb, cx: ab.x + ab.width / 2, cy: ab.y + ab.height / 2 };
+    }
+
     var shape = new Shape({
       d: combined,
       spin: true,
-      nsx: s, nsy: s,
-      cx: bb.x + bb.width / 2,
-      cy: bb.y + bb.height / 2,
       name: name || 'custom'
     });
     shape.custom = true;
+    shape._ink = ink;
+    shape._box = box;
+    shape.hasArtboard = !!box;
+    /* Default to the artboard when the file declares one: it preserves both
+     * relative scale and position across a set, and a single shape drawn to
+     * fill its artboard is unaffected either way. */
+    shape.setFit(box ? 'box' : 'ink');
     return shape;
   }
 
@@ -273,6 +332,7 @@ var CD = window.CD || {};
   CD.getShape = getShape;
   CD.setCustomShape = setCustomShape;
   CD.hasCustomShape = hasCustomShape;
+  CD.applyFit = applyFit;
   CD.setToneShape = setToneShape;
   CD.hasToneShape = hasToneShape;
   CD.anyToneShape = anyToneShape;

@@ -217,6 +217,7 @@ var CD = window.CD || {};
   function paintDots(c2d) {
     var p = state.params;
     var dots = state.dots;
+    CD.applyFit(p.shapeFit ? 'box' : 'ink');
     var buckets = 32, b, i;
     var groups = new Array(buckets);
     for (b = 0; b < buckets; b++) groups[b] = [];
@@ -365,12 +366,29 @@ var CD = window.CD || {};
   }
 
   function updateStats(quality) {
+    if (ui && ui.refs.shapeType && ui.refs.shapeType.toneCounts) {
+      ui.refs.shapeType.toneCounts(toneBandCounts());
+    }
     var e = $('#stats');
     if (!e) return;
     e.textContent = state.lines.length.toLocaleString() + ' contours · ' +
       state.dots.length.toLocaleString() + ' dots · ' +
       Math.round(state.timing[quality] || 0) + ' ms' +
       (quality === 'draft' ? ' (preview)' : '');
+  }
+
+  /* How many dots each tonal band actually claims. Null outside tone mode. */
+  function toneBandCounts() {
+    var p = state.params;
+    if (p.shapeType !== 'tones') return null;
+    var counts = { dark: 0, mid: 0, bright: 0 };
+    var lo = Math.min(p.toneSplitLow, p.toneSplitHigh);
+    var hi = Math.max(p.toneSplitLow, p.toneSplitHigh);
+    for (var i = 0; i < state.dots.length; i++) {
+      var d = state.dots[i].d;
+      counts[d < lo ? 'dark' : (d < hi ? 'mid' : 'bright')]++;
+    }
+    return counts;
   }
 
   function exportSVG() {
@@ -380,6 +398,7 @@ var CD = window.CD || {};
       run('full');
     }
     var p = state.params;
+    CD.applyFit(p.shapeFit ? 'box' : 'ink');
     var svg = CD.buildSVG({
       width: state.viewW, height: state.viewH,
       background: p.background,

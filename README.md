@@ -110,25 +110,53 @@ export is exactly what you saw.
 `Tones` mode takes three uploaded SVGs — **Dark**, **Mid**, **Bright** — and
 picks between them per dot, from the same depth value that already drives
 size, density and colour. The primitive itself changes as the surface
-recedes: a fine or open mark in the dark, far regions, a solid one in the
-bright, near ones. Because all four channels read the same field, they cannot
-disagree about where the form is.
+recedes, so the *shape* carries tonality: a light mark in the dark, far
+regions, a heavy one in the bright, near ones.
 
-![three shapes mapped to the dark, mid and bright bands](docs/tone-shapes.png)
+![the same three assets, scaled to their artboard and to their own ink](docs/tone-shapes.png)
 
-Above: open rings in the dark falloff, chevrons through the mid-tones, solid
-rounded squares on the lit near side — each still rotating to follow the
-contour. Dot size is exaggerated here to make the primitives legible; at
-normal size they read as texture rather than as distinct marks.
+#### Prepare the three assets on one artboard
 
-Two sliders set the band boundaries: **Dark → mid** and **Mid → bright**, in
-depth units. They are independent, so they can be dragged past each other;
-that is ordered internally rather than silently erasing the middle band.
+This is the part that decides whether it works. Export all three SVGs from a
+**single, shared artboard**, and let each mark occupy as much of that artboard
+as its tonal weight deserves — a small dot for the dark end, a large ring for
+the bright end. The three files should differ *only* in how much of the
+canvas they fill.
+
+That is because the artboard is the sole thing relating one exported asset to
+another. Fitting each shape to its own ink instead — cropping to the drawn
+marks and blowing each up to fill the dot — renders a 9-unit dot and a
+46-unit ring at exactly the same size, and the tonal difference between your
+three assets is destroyed before anything is drawn. **Scale to artboard**, on
+by default, is what preserves it; the comparison above is the same three
+files with the toggle on and off. Turn it off for a lone shape that should
+fill the dot regardless of the canvas it was drawn on.
+
+Files with no `viewBox` and no `width`/`height` have no artboard to read, so
+they always fall back to ink fitting.
+
+#### Bands
+
+Two sliders set the boundaries: **Dark → mid** and **Mid → bright**, in depth
+units. They are independent, so they can be dragged past each other; that is
+ordered internally rather than silently erasing the middle band.
+
+Each slot shows a live count of the dots currently falling in its band, so an
+empty band — or one that has swallowed the whole image — is visible rather
+than something to infer from the render. Depth after thresholding tends to
+skew bright, so expect to pull both splits up from their defaults.
 
 You do not have to fill all three. An empty slot borrows from its nearest
 filled neighbour, so a single upload already gives a usable result and you can
 add the others as you go. The `Tones` button stays disabled until at least one
 slot is filled.
+
+#### Letting shape do the work
+
+Dot size is depth-driven too, and by default that ramp compounds with the
+shape ramp. To get closest to a classic halftone — where the mark alone
+carries the tone — flatten the size ramp: **Size falloff** low, **Size
+variation** 0. The three primitives then differ only in their own weight.
 
 The single-shape `Custom` slot is unchanged and independent, and a dragged-and
 -dropped SVG still goes to it — the three tone slots are only ever filled by
@@ -208,8 +236,9 @@ photograph into a continuous surface — contours need this).
 at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
 Flow coherence.
 
-**Dots** — Shape, Dark → mid, Mid → bright, Dot size, Size variation,
-Size falloff, Dot spacing, Randomness, Edge falloff, Edge width.
+**Dots** — Shape, Scale to artboard, Dark → mid, Mid → bright, Dot size,
+Size variation, Size falloff, Dot spacing, Randomness, Edge falloff,
+Edge width.
 
 **Glow** — Glow, Glow radius.
 

@@ -52,6 +52,10 @@ var CD = window.CD || {};
       group: 'Dots', hint: 'Oriented primitives, not particles.',
       controls: [
         { key: 'shapeType', label: 'Shape', type: 'shape', def: 'circle', stage: 'draw' },
+        { key: 'shapeFit', label: 'Scale to artboard', type: 'toggle', def: true, stage: 'draw',
+          help: 'Size uploaded shapes by their artboard, not their ink — so a set ' +
+                'exported from one canvas keeps its relative weights. Off fits each ' +
+                'shape to the dot.' },
         { key: 'toneSplitLow', label: 'Dark \u2192 mid', min: 0, max: 1, step: 0.01, def: 0.33, stage: 'draw',
           help: 'Depth below this uses the dark shape. Tones mode only.' },
         { key: 'toneSplitHigh', label: 'Mid \u2192 bright', min: 0, max: 1, step: 0.01, def: 0.66, stage: 'draw',
@@ -215,7 +219,9 @@ var CD = window.CD || {};
             trow.appendChild(tbtn);
             var tname = el('span', 'file-name', 'none');
             trow.appendChild(tname);
-            toneNames[slot] = tname;
+            var tcount = el('span', 'tone-count', '');
+            trow.appendChild(tcount);
+            toneNames[slot] = { name: tname, count: tcount };
             toneWrap.appendChild(trow);
           });
           row.appendChild(toneWrap);
@@ -232,7 +238,17 @@ var CD = window.CD || {};
             },
             toneLoaded: function (slot, name) {
               tonesBtn.disabled = false;
-              if (toneNames[slot]) toneNames[slot].textContent = name;
+              if (toneNames[slot]) toneNames[slot].name.textContent = name;
+            },
+            /* Live dot count per band, so a band that is empty — or one that
+             * has swallowed everything — is visible without guessing. */
+            toneCounts: function (counts) {
+              CD.TONE_SLOTS.forEach(function (slot) {
+                if (!toneNames[slot]) return;
+                var n = counts && counts[slot];
+                toneNames[slot].count.textContent =
+                  (n === undefined || n === null) ? '' : n.toLocaleString();
+              });
             }
           };
 

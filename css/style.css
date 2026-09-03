@@ -229,3 +229,10 @@ input[type=color] {
 .tone-uploads .help { margin: 0 0 8px; }
 .tone-uploads .upload-row { margin-top: 6px; }
 .tone-slot { min-width: 62px; text-align: center; }
+.tone-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: .8;
+}
