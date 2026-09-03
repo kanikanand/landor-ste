@@ -109,6 +109,70 @@ var CD = window.CD || {};
     return this;
   };
 
+  /* --------------------------------------------------------------------------
+   * Exact Euclidean distance transform (Felzenszwalb & Huttenlocher, 2012).
+   *
+   * Given a binary mask, returns each interior cell's distance to the nearest
+   * background cell — i.e. how far inside the silhouette it sits. Linear time,
+   * and exact rather than the usual chamfer approximation, which matters here
+   * because the distance drives dot size directly: a chamfer's octagonal bias
+   * would show up as visible faceting along a curved silhouette.
+   * ------------------------------------------------------------------------*/
+  var EDT_INF = 1e20;
+
+  /* Lower envelope of parabolas along one row/column. */
+  function edt1d(f, d, v, z, n) {
+    var k = 0, q;
+    v[0] = 0;
+    z[0] = -EDT_INF;
+    z[1] = EDT_INF;
+    for (q = 1; q < n; q++) {
+      var s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      while (s <= z[k]) {
+        k--;
+        s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+      }
+      k++;
+      v[k] = q;
+      z[k] = s;
+      z[k + 1] = EDT_INF;
+    }
+    k = 0;
+    for (q = 0; q < n; q++) {
+      while (z[k + 1] < q) k++;
+      var dq = q - v[k];
+      d[q] = dq * dq + f[v[k]];
+    }
+  }
+
+  /* mask: Field(1ch). Cells above `iso` are inside. Returns a Field(1ch) of
+   * distances to the outside, in grid cells. */
+  function distanceInside(mask, iso) {
+    var w = mask.w, h = mask.h;
+    var out = new Field(w, h, 1);
+    var g = out.data, m = mask.data;
+    var i, x, y;
+
+    for (i = 0; i < w * h; i++) g[i] = m[i] > iso ? EDT_INF : 0;
+
+    var n = Math.max(w, h);
+    var f = new Float64Array(n), d = new Float64Array(n);
+    var v = new Int32Array(n), z = new Float64Array(n + 1);
+
+    for (x = 0; x < w; x++) {
+      for (y = 0; y < h; y++) f[y] = g[y * w + x];
+      edt1d(f, d, v, z, h);
+      for (y = 0; y < h; y++) g[y * w + x] = d[y];
+    }
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) f[x] = g[y * w + x];
+      edt1d(f, d, v, z, w);
+      for (x = 0; x < w; x++) g[y * w + x] = Math.sqrt(d[x]);
+    }
+    return out;
+  }
+
+  CD.distanceInside = distanceInside;
   CD.clamp = clamp;
   CD.lerp = lerp;
   CD.smoothstep = smoothstep;

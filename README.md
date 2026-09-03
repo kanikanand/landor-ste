@@ -104,6 +104,37 @@ Uploading an SVG flattens its `path` / `circle` / `rect` / `ellipse` /
 canvas renderer and the SVG exporter consume that one definition, so what you
 export is exactly what you saw.
 
+## Edge falloff and glow
+
+Two optional finishing effects, both off by default.
+
+![edge falloff and glow, off and on](docs/effects.png)
+
+**Edge falloff** shrinks dots as they approach the silhouette, *independently
+of depth*. Depth alone cannot express this: a point can be near the camera and
+still sit right on the rim of the form, and that is exactly where dots want to
+disappear. Without it the artwork ends on a hard cut where the threshold bites;
+with it the form dissolves into the negative space.
+
+It needs a distance-to-silhouette field, which is computed once per depth
+rebuild with an exact Euclidean distance transform (Felzenszwalb &
+Huttenlocher) — linear time, and exact rather than the usual chamfer
+approximation, because the distance drives dot size directly and a chamfer's
+octagonal bias would show as visible faceting along a curved silhouette. Both
+edge controls are then a cheap remap of that field, so they re-render at dot
+speed rather than triggering a full rebuild.
+
+**Glow** is a blurred copy of the dot layer laid underneath the crisp one. It
+carries no depth term of its own and does not need one: the dots are already
+coloured by depth, so blurring that layer blooms hardest where the surface is
+nearest and brightest. Near-side weighting falls out of the colour ramp for
+free.
+
+Compositing is plain source-over rather than additive, so the canvas and the
+SVG `<filter>` agree exactly. On a dark ground the two are visually
+indistinguishable, and matching the export is worth more than the marginally
+punchier additive blend.
+
 ## SVG export
 
 `Export SVG` writes real vector geometry, not a traced bitmap:
@@ -115,10 +146,20 @@ export is exactly what you saw.
   friendlier to downstream tools.
 - Dots are grouped into colour buckets as `<g fill>` groups rather than
   carrying a fill attribute each.
+- With the glow on, the dot layer goes into `<defs>` once and is drawn twice
+  with `<use>` — blurred underneath, crisp on top. Emitting the dots twice
+  would double the file for nothing; as it is, the glow costs about 0.1%.
+  Note that the glow is an SVG filter, and some editors rasterise filters on
+  import. Set Glow to 0 before exporting if you need a purely geometric file.
 
 Every dot arrives in Illustrator or Figma as an individual editable object.
-Export fidelity is verified against the canvas at 99.3–99.8% pixel overlap
-across all shape types; the remainder is antialiasing on dot edges.
+Export fidelity is verified against the canvas: 99.4–99.8% pixel overlap
+across all shape types, the remainder being antialiasing on dot edges. With
+the glow on, that binary measure is the wrong instrument — a soft halo puts
+many pixels right at the threshold — so parity there is measured as mean
+absolute luminance error, which comes out at 0.43/255, with 0.03% of pixels
+differing by more than 8/255. That is marginally *better* than the no-glow
+baseline.
 
 `Export PNG` writes the canvas as-is.
 
@@ -137,9 +178,14 @@ at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
 Flow coherence.
 
 **Dots** — Shape, Dot size, Size variation, Size falloff, Dot spacing,
-Randomness.
+Randomness, Edge falloff, Edge width.
+
+**Glow** — Glow, Glow radius.
 
 **Colour** — Background, Far colour, Near colour, Colour falloff.
+
+Edge falloff and Glow both default to 0, i.e. off. Nothing about the base
+render changes until you ask for it.
 
 Dot spacing is floored at a little over one dot diameter, so the largest,
 densest dots cannot fuse into a solid line and collapse the halftone into fill.
@@ -159,6 +205,12 @@ black work best.
   map and starts being a striped halftone; both are useful.
 - If the subject is dark against a light ground, turn on **Invert depth**
   first — nothing else will behave until the near/far sense is right.
+- **Edge falloff** is worth reaching for whenever the silhouette reads as cut
+  out rather than lit; set **Edge width** to roughly the width of the falloff
+  you want in pixels.
+- **Glow** wants to stay under about 0.5. Past that it stops reading as bloom
+  and starts washing out the negative space, which is the one thing holding
+  the image together.
 
 Where a photograph's brightness genuinely disagrees with its geometry — a dark
 iris on a lit face, a specular highlight in a crease — the contours will follow
@@ -187,11 +239,12 @@ possible settings (~100k dots) take about 3 s.
 ```
 index.html            markup + script order
 css/style.css         tool chrome
-js/core.js            Field container (bilinear sampling, separable blur), math
+js/core.js            Field container (bilinear sampling, separable blur),
+                      exact Euclidean distance transform, math
 js/field.js           depth field, gradient, flow field
 js/streamlines.js     evenly-spaced streamline tracer + spatial hash
 js/shapes.js          the dot primitive, drawDot, SVG shape upload
-js/dots.js            streamlines -> oriented dots, colour ramp
+js/dots.js            streamlines -> oriented dots, edge falloff, colour ramp
 js/svgexport.js       vector export
 js/ui.js              declarative control schema + panel
 js/app.js             p5 sketch, pipeline orchestration, I/O

@@ -23,6 +23,7 @@ var CD = window.CD || {};
   function buildDots(ctx) {
     var lines = ctx.lines;
     var depth = ctx.depth, grad = ctx.grad, mask = ctx.mask, flow = ctx.flow;
+    var edge = ctx.edge;
     var s = ctx.fieldScale;
     var p = ctx.params;
     var rng = ctx.rng;
@@ -31,6 +32,10 @@ var CD = window.CD || {};
     var jitter = p.randomness;
     var spacingBase = Math.max(0.6, p.dotSpacing);
     var maxDots = p.maxDots;
+
+    /* Edge falloff works in view pixels; the distance field is in grid cells. */
+    var edgeAmt = clamp(p.edgeFalloff, 0, 1);
+    var edgeW = Math.max(0.001, p.edgeWidth) * s;
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
       var pts = lines[li];
@@ -56,6 +61,14 @@ var CD = window.CD || {};
           var base = p.dotSize * lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff));
           var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
           var size = base * vary;
+
+          /* Edge falloff: shrink towards the silhouette, independently of
+           * depth. This is what stops the form ending on a hard rim and lets
+           * it dissolve into the negative space instead. */
+          if (edgeAmt > 0) {
+            var ef = CD.smoothstep(0, edgeW, edge.sample(fx, fy, 0));
+            size *= 1 - edgeAmt * (1 - ef);
+          }
 
           /* Local spacing: dots crowd together where the surface faces the
            * viewer. Near dots are also the biggest, so the step is floored at

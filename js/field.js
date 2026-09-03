@@ -3,7 +3,9 @@
  *
  *   FIELD 1  DEPTH  D(x,y)   black = far, white = near.
  *                            Decides where dots exist, how big they are and
- *                            how densely they pack.
+ *                            how densely they pack. Its threshold also yields
+ *                            a silhouette, and the distance to that silhouette
+ *                            is carried alongside it for the edge falloff.
  *
  *   FIELD 2  FLOW   F(x,y)   derived from the gradient of depth:
  *                              grad D = (dD/dx, dD/dy)
@@ -79,6 +81,13 @@ var CD = window.CD || {};
     /* feather the mask edge slightly so contours die out instead of snapping */
     mask.blur(1, 1);
 
+    /* 5b. Distance from every interior point to the silhouette. Depth alone
+     *     cannot express this: a point can be near the camera and still sit
+     *     right on the edge of the form, and that is exactly where dots want
+     *     to shrink away. Computed once here so the edge controls stay a
+     *     cheap remap downstream. */
+    var edge = CD.distanceInside(mask, 0.5);
+
     /* 6. gradient of depth (Sobel) — the source of the flow field. */
     var grad = new CD.Field(w, h, 2);
     var gd = grad.data;
@@ -96,7 +105,7 @@ var CD = window.CD || {};
       }
     }
 
-    return { depth: depth, mask: mask, grad: grad, w: w, h: h };
+    return { depth: depth, mask: mask, edge: edge, grad: grad, w: w, h: h };
   }
 
   /* --------------------------------------------------------------------------

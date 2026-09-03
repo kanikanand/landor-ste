@@ -8,6 +8,10 @@
  *
  * Circles take a shorter path — a plain <circle>, which is both smaller and
  * friendlier to downstream tools.
+ *
+ * When the glow is on, the dot layer is emitted into <defs> once and drawn
+ * twice with <use>: a blurred copy underneath, the crisp one on top. Emitting
+ * the dots twice would double the file for no reason.
  * ==========================================================================*/
 var CD = window.CD || {};
 
@@ -26,8 +30,14 @@ var CD = window.CD || {};
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  /* Append in place. Not push.apply: the dot layer runs to six figures of
+   * entries, and spreading that many arguments overflows the call stack. */
+  function pushAll(dst, src) {
+    for (var i = 0; i < src.length; i++) dst.push(src[i]);
+  }
+
   /* opts: {width, height, background, dots, shapeType, ramp, colorGamma,
-   *        title, buckets} */
+   *        glowAmount, glowRadius, title, buckets} */
   function buildSVG(opts) {
     var w = opts.width, h = opts.height;
     var shape = CD.getShape(opts.shapeType);
@@ -44,19 +54,31 @@ var CD = window.CD || {};
     out.push('<title>' + esc(opts.title || 'Contour dot render') + '</title>');
     out.push('<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="' + opts.background + '"/>');
 
+    var glow = opts.glowAmount > 0.001 && opts.glowRadius > 0.001;
+
+    var defs = [];
     if (!isCircle) {
       var nt = shape.normTransform();
-      out.push('<defs>');
       if (nt) {
-        out.push('<g id="dot" transform="' + nt + '"><path d="' + shape.d + '"/></g>');
+        defs.push('<g id="dot" transform="' + nt + '"><path d="' + shape.d + '"/></g>');
       } else {
-        out.push('<path id="dot" d="' + shape.d + '"/>');
+        defs.push('<path id="dot" d="' + shape.d + '"/>');
       }
-      out.push('</defs>');
+    }
+    if (glow) {
+      /* userSpaceOnUse with an explicit margin: the default bounding-box
+       * filter region would clip a blur this wide at the edges of the art. */
+      var pad = Math.ceil(opts.glowRadius * 3);
+      defs.push('<filter id="glow" filterUnits="userSpaceOnUse" ' +
+        'x="' + (-pad) + '" y="' + (-pad) + '" ' +
+        'width="' + (w + pad * 2) + '" height="' + (h + pad * 2) + '">' +
+        '<feGaussianBlur stdDeviation="' + num(opts.glowRadius / 2, 2) + '"/>' +
+        '</filter>');
     }
 
     /* Group dots into a small number of colour buckets so the file is a
      * handful of <g fill> groups rather than one fill attribute per dot. */
+    var body = [];
     var groups = [];
     var i;
     for (i = 0; i < buckets; i++) groups.push([]);
@@ -70,12 +92,12 @@ var CD = window.CD || {};
       if (!list.length) continue;
       var mid = (g + 0.5) / buckets;
       var col = CD.rgbToHex(ramp(mid, gamma));
-      out.push('<g fill="' + col + '">');
+      body.push('<g fill="' + col + '">');
       for (i = 0; i < list.length; i++) {
         var dt = list[i];
         if (isCircle) {
-          out.push('<circle cx="' + num(dt.x) + '" cy="' + num(dt.y) +
-                   '" r="' + num(dt.s, 3) + '"/>');
+          body.push('<circle cx="' + num(dt.x) + '" cy="' + num(dt.y) +
+                    '" r="' + num(dt.s, 3) + '"/>');
         } else {
           var t = 'translate(' + num(dt.x) + ' ' + num(dt.y) + ')';
           if (shape.spin) {
@@ -88,10 +110,28 @@ var CD = window.CD || {};
             t += ' rotate(' + num(deg, 1) + ')';
           }
           t += ' scale(' + num(dt.s, 3) + ')';
-          out.push('<use xlink:href="#dot" href="#dot" transform="' + t + '"/>');
+          body.push('<use xlink:href="#dot" href="#dot" transform="' + t + '"/>');
         }
       }
-      out.push('</g>');
+      body.push('</g>');
+    }
+
+    if (glow) {
+      defs.push('<g id="dots">');
+      pushAll(defs, body);
+      defs.push('</g>');
+    }
+    if (defs.length) {
+      out.push('<defs>');
+      pushAll(out, defs);
+      out.push('</defs>');
+    }
+    if (glow) {
+      out.push('<use xlink:href="#dots" href="#dots" filter="url(#glow)" ' +
+               'opacity="' + num(opts.glowAmount, 3) + '"/>');
+      out.push('<use xlink:href="#dots" href="#dots"/>');
+    } else {
+      pushAll(out, body);
     }
 
     out.push('</svg>');

@@ -57,7 +57,19 @@ var CD = window.CD || {};
         { key: 'sizeFalloff', label: 'Size falloff', min: 0.3, max: 3.5, step: 0.05, def: 1.35, stage: 'dots',
           help: 'How fast dots shrink as the surface recedes.' },
         { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
-        { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' }
+        { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' },
+        { key: 'edgeFalloff', label: 'Edge falloff', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots',
+          help: 'Shrinks dots towards the silhouette, independently of depth. 0 is off.' },
+        { key: 'edgeWidth', label: 'Edge width', min: 1, max: 140, step: 1, def: 34, stage: 'dots',
+          help: 'How far in from the silhouette the shrink reaches, in pixels.' }
+      ]
+    },
+    {
+      group: 'Glow', hint: 'A blurred copy of the dot layer, underneath.',
+      controls: [
+        { key: 'glowAmount', label: 'Glow', min: 0, max: 1, step: 0.01, def: 0, stage: 'draw',
+          help: 'Blooms hardest where the surface is nearest, because the dots are already brightest there. 0 is off.' },
+        { key: 'glowRadius', label: 'Glow radius', min: 1, max: 60, step: 1, def: 12, stage: 'draw' }
       ]
     },
     {

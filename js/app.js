@@ -201,11 +201,63 @@ var CD = window.CD || {};
       depth: state.dep.depth,
       grad: state.dep.grad,
       mask: state.dep.mask,
+      edge: state.dep.edge,
       flow: state.flow,
       fieldScale: state.fieldScale,
       params: p,
       rng: CD.makeRng(p.seed ^ 0x9e3779b9)
     });
+  }
+
+  /* Paint every dot into a 2D context, batching by colour bucket: one
+   * fillStyle change per bucket instead of one per dot, which is the
+   * difference between a stutter and an instant redraw at a hundred
+   * thousand dots. */
+  function paintDots(c2d) {
+    var p = state.params;
+    var dots = state.dots;
+    var buckets = 32, b, i;
+    var groups = new Array(buckets);
+    for (b = 0; b < buckets; b++) groups[b] = [];
+    for (i = 0; i < dots.length; i++) {
+      b = (dots[i].d * buckets) | 0;
+      groups[b < 0 ? 0 : (b > buckets - 1 ? buckets - 1 : b)].push(dots[i]);
+    }
+    for (b = 0; b < buckets; b++) {
+      var list = groups[b];
+      if (!list.length) continue;
+      var col = state.ramp((b + 0.5) / buckets, p.colorGamma);
+      c2d.fillStyle = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
+      for (i = 0; i < list.length; i++) {
+        var d = list[i];
+        CD.drawDot(c2d, d.x, d.y, d.s, d.r, p.shapeType);
+      }
+    }
+  }
+
+  /* The glow is a blurred copy of the dot layer laid underneath the crisp one.
+   * It needs no depth weighting of its own: the dots are already coloured by
+   * depth, so blurring that layer blooms hardest where the surface is nearest
+   * and brightest, which is exactly where it should.
+   *
+   * Compositing is plain source-over rather than additive, so that the canvas
+   * and the SVG <filter> export agree — on a dark ground the two are visually
+   * near-identical anyway. */
+  function paintGlow() {
+    var p = state.params;
+    var density = canvasEl.width / state.viewW;
+    var off = document.createElement('canvas');
+    off.width = canvasEl.width;
+    off.height = canvasEl.height;
+    var octx = off.getContext('2d');
+    octx.scale(density, density);
+    paintDots(octx);
+
+    ctx.save();
+    ctx.globalAlpha = p.glowAmount;
+    ctx.filter = 'blur(' + p.glowRadius + 'px)';
+    ctx.drawImage(off, 0, 0, state.viewW, state.viewH);
+    ctx.restore();
   }
 
   function stageDraw() {
@@ -216,29 +268,12 @@ var CD = window.CD || {};
     ctx.save();
     ctx.fillStyle = p.background;
     ctx.fillRect(0, 0, state.viewW, state.viewH);
+    ctx.restore();
 
-    /* Batch by colour bucket: one fillStyle change per bucket instead of one
-     * per dot, which is the difference between a stutter and an instant
-     * redraw at a hundred thousand dots. */
-    var dots = state.dots;
-    var buckets = 32, b, i;
-    var groups = new Array(buckets);
-    for (b = 0; b < buckets; b++) groups[b] = [];
-    for (i = 0; i < dots.length; i++) {
-      b = (dots[i].d * buckets) | 0;
-      groups[b < 0 ? 0 : (b > buckets - 1 ? buckets - 1 : b)].push(dots[i]);
-    }
+    if (p.glowAmount > 0.001 && p.glowRadius > 0.001) paintGlow();
 
-    for (b = 0; b < buckets; b++) {
-      var list = groups[b];
-      if (!list.length) continue;
-      var col = state.ramp((b + 0.5) / buckets, p.colorGamma);
-      ctx.fillStyle = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
-      for (i = 0; i < list.length; i++) {
-        var d = list[i];
-        CD.drawDot(ctx, d.x, d.y, d.s, d.r, p.shapeType);
-      }
-    }
+    ctx.save();
+    paintDots(ctx);
     ctx.restore();
   }
 
@@ -347,6 +382,8 @@ var CD = window.CD || {};
       shapeType: p.shapeType,
       ramp: CD.makeRamp(p.colorFar, p.colorNear),
       colorGamma: p.colorGamma,
+      glowAmount: p.glowAmount,
+      glowRadius: p.glowRadius,
       title: state.srcName + ' — contour dots'
     });
     CD.download(state.srcName + '-contour-dots.svg', svg);
