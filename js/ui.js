@@ -12,7 +12,18 @@ var CD = window.CD || {};
 
   var STAGES = ['depth', 'flow', 'lines', 'dots', 'draw'];
 
+  var MODES = [
+    { key: 'edge', label: 'Edge' },
+    { key: 'surface', label: 'Surface' }
+  ];
+
   var SCHEMA = [
+    {
+      group: 'Render', hint: 'Edge traces the subject. Surface fills it.',
+      controls: [
+        { key: 'renderMode', label: 'Mode', type: 'mode', def: 'edge', stage: 'flow' }
+      ]
+    },
     {
       group: 'Image', hint: 'The photograph, before it becomes a surface.',
       controls: [
@@ -20,31 +31,48 @@ var CD = window.CD || {};
           help: 'Everything below this is negative space — pure background, no dots.' },
         { key: 'imageContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
         { key: 'invert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
-          help: 'Use when the subject is lit dark-on-light.' }
+          help: 'Use when the subject is lit dark-on-light.' },
+        { key: 'largestRegion', label: 'Largest region only', type: 'toggle', def: true, stage: 'depth',
+          help: 'Keeps one subject. Without it any background patch crossing the threshold grows its own silhouette.' },
+        { key: 'showMask', label: 'Preview silhouette', type: 'toggle', def: false, stage: 'draw',
+          help: 'Tints what the threshold currently calls the subject. The contours are offsets of its boundary.' },
+        { key: 'showImage', label: 'Show image', type: 'toggle', def: true, stage: 'draw',
+          help: 'Draw the photograph under the dots.' },
+        { key: 'imageOpacity', label: 'Image opacity', min: 0, max: 1, step: 0.01, def: 1, stage: 'draw' },
+        { key: 'embedImage', label: 'Embed image in SVG', type: 'toggle', def: true, stage: 'draw',
+          help: 'Writes the photograph into the export so the file stands alone.' }
       ]
     },
     {
       group: 'Depth', hint: 'Field 1. Black is far, white is near.',
       controls: [
-        { key: 'depthExaggeration', label: 'Depth exaggeration', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots',
+        { key: 'depthExaggeration', label: 'Depth exaggeration', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots', modes: ['surface'],
           help: 'Displaces each dot along the depth gradient. This is the relief.' },
-        { key: 'depthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth',
+        { key: 'depthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth', modes: ['surface'],
           help: 'Steepens near against far.' },
         { key: 'depthSmoothing', label: 'Depth smoothing', min: 0, max: 30, step: 1, def: 10, stage: 'depth',
           help: 'Turns a noisy photo into a continuous surface. Contours need this.' }
       ]
     },
     {
-      group: 'Contours', hint: 'Field 2. Flow runs along the iso-depth lines.',
+      group: 'Contours', hint: 'Offsets from the subject/background edge.',
       controls: [
-        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines' },
+        { key: 'lineCount', label: 'Number of lines', min: 1, max: 14, step: 1, def: 6, stage: 'lines', modes: ['edge'],
+          help: 'Contours stepping away from the edge. The first is the silhouette itself.' },
+        { key: 'lineSpread', label: 'Spread', type: 'spread', def: 'both', stage: 'lines', modes: ['edge'],
+          help: 'Which side of the edge the extra contours step towards.' },
+        { key: 'shading', label: 'Shading', min: 0, max: 1, step: 0.01, def: 1, stage: 'dots', modes: ['edge'],
+          help: 'How much the darks earn extra contours. At 0 every region keeps a single line.' },
+        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1.5, stage: 'dots', modes: ['edge'],
+          help: 'Higher confines the shading to the deepest darks.' },
+        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines', modes: ['surface'] },
         { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines' },
-        { key: 'flowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow',
+        { key: 'flowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow', modes: ['surface'],
           help: '0 = straight lines at the base angle, 1 = pure depth contours.' },
-        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow' },
-        { key: 'flowAngle', label: 'Base angle', min: 0, max: 180, step: 1, def: 0, stage: 'flow',
+        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow', modes: ['surface'] },
+        { key: 'flowAngle', label: 'Base angle', min: 0, max: 180, step: 1, def: 0, stage: 'flow', modes: ['surface'],
           help: 'Direction the lines fall back to where the surface is flat.' },
-        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow',
+        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow', modes: ['surface'],
           help: 'Diffuses direction into flat regions so lines stay continuous.' }
       ]
     },
@@ -60,15 +88,17 @@ var CD = window.CD || {};
           help: 'Depth below this uses the dark shape. Tones mode only.' },
         { key: 'toneSplitHigh', label: 'Mid \u2192 bright', min: 0, max: 1, step: 0.01, def: 0.66, stage: 'draw',
           help: 'Depth above this uses the bright shape. Tones mode only.' },
-        { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
+        { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 3.2, stage: 'dots' },
         { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0.18, stage: 'dots' },
+        { key: 'sizeByTone', label: 'Size by tone', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots',
+          help: 'How much tone drives dot size. 0 is an even mark, which is what an overlay wants; raise it for the surface renderer.' },
         { key: 'sizeFalloff', label: 'Size falloff', min: 0.3, max: 3.5, step: 0.05, def: 1.35, stage: 'dots',
-          help: 'How fast dots shrink as the surface recedes.' },
-        { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
+          help: 'How fast dots shrink as the tone falls, once Size by tone is above 0.' },
+        { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 9, stage: 'dots' },
         { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' },
-        { key: 'edgeFalloff', label: 'Edge falloff', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots',
+        { key: 'edgeFalloff', label: 'Edge falloff', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots', modes: ['surface'],
           help: 'Shrinks dots towards the silhouette, independently of depth. 0 is off.' },
-        { key: 'edgeWidth', label: 'Edge width', min: 1, max: 140, step: 1, def: 34, stage: 'dots',
+        { key: 'edgeWidth', label: 'Edge width', min: 1, max: 140, step: 1, def: 34, stage: 'dots', modes: ['surface'],
           help: 'How far in from the silhouette the shrink reaches, in pixels.' }
       ]
     },
@@ -81,11 +111,11 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Colour', hint: 'Negative space stays black.',
+      group: 'Colour', hint: 'Flat by default — an overlay reads as one accent.',
       controls: [
         { key: 'background', label: 'Background', type: 'color', def: '#000000', stage: 'draw' },
-        { key: 'colorFar', label: 'Far colour', type: 'color', def: '#4a0410', stage: 'draw' },
-        { key: 'colorNear', label: 'Near colour', type: 'color', def: '#ff2233', stage: 'draw' },
+        { key: 'colorFar', label: 'Far colour', type: 'color', def: '#ff2d2d', stage: 'draw' },
+        { key: 'colorNear', label: 'Near colour', type: 'color', def: '#ff5c46', stage: 'draw' },
         { key: 'colorGamma', label: 'Colour falloff', min: 0.3, max: 3, step: 0.05, def: 1, stage: 'draw' }
       ]
     }
@@ -129,6 +159,7 @@ var CD = window.CD || {};
   function buildPanel(root, params, onChange, hooks) {
     root.innerHTML = '';
     var refs = {};
+    var sections = [];
 
     SCHEMA.forEach(function (g) {
       var sec = el('section', 'group');
@@ -167,6 +198,36 @@ var CD = window.CD || {};
           top.appendChild(ci);
           row.appendChild(top);
           refs[c.key] = { set: function (v) { ci.value = v; } };
+
+        } else if (c.type === 'mode' || c.type === 'spread') {
+          var opts = c.type === 'mode' ? MODES : [
+            { key: 'both', label: 'Both' },
+            { key: 'inside', label: 'Inside' },
+            { key: 'outside', label: 'Outside' }
+          ];
+          var seg = el('div', 'shape-row seg');
+          if (c.type !== 'mode') row.appendChild(el('label', null, c.label));
+          opts.forEach(function (o) {
+            var b = el('button', 'shape-btn', o.label);
+            b.dataset.opt = o.key;
+            b.addEventListener('click', function () {
+              params[c.key] = o.key;
+              seg.querySelectorAll('.shape-btn').forEach(function (x) {
+                x.classList.toggle('on', x.dataset.opt === o.key);
+              });
+              onChange(c.stage);
+            });
+            if (params[c.key] === o.key) b.classList.add('on');
+            seg.appendChild(b);
+          });
+          row.appendChild(seg);
+          refs[c.key] = {
+            set: function (v) {
+              seg.querySelectorAll('.shape-btn').forEach(function (x) {
+                x.classList.toggle('on', x.dataset.opt === v);
+              });
+            }
+          };
 
         } else if (c.type === 'shape') {
           row.appendChild(el('label', null, c.label));
@@ -275,20 +336,40 @@ var CD = window.CD || {};
         }
 
         if (c.help) row.appendChild(el('p', 'help', c.help));
+        row.dataset.modes = c.modes ? c.modes.join(' ') : '';
         sec.appendChild(row);
       });
 
+      sections.push(sec);
       root.appendChild(sec);
     });
 
+    /* Controls that belong to one renderer only are hidden in the other, and
+     * a group whose every control is hidden goes with them. */
+    function syncVisibility() {
+      sections.forEach(function (sec) {
+        var shown = 0;
+        sec.querySelectorAll('.ctrl').forEach(function (r) {
+          var m = r.dataset.modes;
+          var vis = !m || m.split(' ').indexOf(params.renderMode) >= 0;
+          r.hidden = !vis;
+          if (vis) shown++;
+        });
+        sec.hidden = shown === 0;
+      });
+    }
+    syncVisibility();
+
     return {
       refs: refs,
+      syncVisibility: syncVisibility,
       syncAll: function () {
         SCHEMA.forEach(function (g) {
           g.controls.forEach(function (c) {
             if (refs[c.key] && refs[c.key].set) refs[c.key].set(params[c.key]);
           });
         });
+        syncVisibility();
       }
     };
   }
@@ -300,7 +381,7 @@ var CD = window.CD || {};
   }
 
   CD.UI = {
-    SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED,
+    SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED, MODES: MODES,
     defaults: defaults, buildPanel: buildPanel, earliest: earliest
   };
 })(CD);

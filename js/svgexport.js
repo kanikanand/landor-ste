@@ -37,8 +37,8 @@ var CD = window.CD || {};
   }
 
   /* opts: {width, height, background, dots, shapeType, ramp, colorGamma,
-   *        glowAmount, glowRadius, toneSplitLow, toneSplitHigh, title,
-   *        buckets} */
+   *        glowAmount, glowRadius, toneSplitLow, toneSplitHigh, image,
+   *        imageOpacity, title, buckets} */
   function buildSVG(opts) {
     var w = opts.width, h = opts.height;
     var dots = opts.dots;
@@ -52,6 +52,14 @@ var CD = window.CD || {};
       'width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">');
     out.push('<title>' + esc(opts.title || 'Contour dot render') + '</title>');
     out.push('<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="' + opts.background + '"/>');
+    if (opts.image) {
+      /* The photograph, embedded so the file stands alone, underneath the
+       * dots exactly as on the canvas. */
+      out.push('<image x="0" y="0" width="' + w + '" height="' + h + '"' +
+        (opts.imageOpacity < 1 ? ' opacity="' + num(opts.imageOpacity, 3) + '"' : '') +
+        ' preserveAspectRatio="none"' +
+        ' xlink:href="' + opts.image + '" href="' + opts.image + '"/>');
+    }
 
     var glow = opts.glowAmount > 0.001 && opts.glowRadius > 0.001;
     var toneMode = opts.shapeType === 'tones';
@@ -67,9 +75,19 @@ var CD = window.CD || {};
         var sh = CD.getShape(type);
         var id = 'dot-' + type;
         var nt = sh.normTransform();
-        defs.push(nt
-          ? '<g id="' + id + '" transform="' + nt + '"><path d="' + sh.d + '"/></g>'
-          : '<path id="' + id + '" d="' + sh.d + '"/>');
+        /* Each part keeps its own paint. Stroked parts take their colour from
+         * `currentColor`, which the enclosing colour group sets alongside
+         * fill, so one group still drives every dot in a bucket. */
+        var inner = sh.parts.map(function (part) {
+          if (part.stroke) {
+            return '<path d="' + part.d + '" fill="none" stroke="currentColor" ' +
+                   'stroke-width="' + num(part.width, 3) + '"/>';
+          }
+          return '<path d="' + part.d + '"' +
+                 (part.rule === 'evenodd' ? ' fill-rule="evenodd"' : '') + '/>';
+        }).join('');
+        defs.push('<g id="' + id + '"' + (nt ? ' transform="' + nt + '"' : '') +
+                  '>' + inner + '</g>');
         used[type] = id;
       }
       return used[type];
@@ -91,7 +109,7 @@ var CD = window.CD || {};
       if (!list.length) continue;
       var mid = (g + 0.5) / buckets;
       var col = CD.rgbToHex(ramp(mid, gamma));
-      body.push('<g fill="' + col + '">');
+      body.push('<g fill="' + col + '" color="' + col + '">');
       for (i = 0; i < list.length; i++) {
         var dt = list[i];
         var type = toneMode ? CD.shapeTypeForDepth(opts, dt.d) : opts.shapeType;

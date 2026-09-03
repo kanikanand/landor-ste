@@ -172,7 +172,65 @@ var CD = window.CD || {};
     return out;
   }
 
+  /* Signed distance to the silhouette: positive inside the subject, negative
+   * out in the background, zero on the boundary itself. Its iso-lines are
+   * exactly the offset contours the edge renderer draws — one field, and the
+   * contour at any offset falls out of it. */
+  function signedDistance(mask, iso) {
+    var w = mask.w, h = mask.h, i;
+    var inv = new Field(w, h, 1);
+    for (i = 0; i < w * h; i++) inv.data[i] = mask.data[i] > iso ? 0 : 1;
+
+    var din = distanceInside(mask, iso);
+    var dout = distanceInside(inv, 0.5);
+
+    var out = new Field(w, h, 1);
+    for (i = 0; i < w * h; i++) out.data[i] = din.data[i] - dout.data[i];
+    return out;
+  }
+
+  /* Keep only the largest 4-connected region of the mask.
+   *
+   * A global luminance threshold calls *any* dark patch the subject, so a
+   * graded sky that dips below the threshold in one corner grows its own
+   * silhouette and the contours go wandering off across the background.
+   * Keeping the largest region alone is what makes the boundary mean
+   * "subject against background" rather than "wherever the luminance
+   * happens to cross". */
+  function largestRegion(mask, iso) {
+    var w = mask.w, h = mask.h, n = w * h;
+    var label = new Int32Array(n);      // 0 = unvisited
+    var stack = new Int32Array(n);
+    var best = 0, bestSize = 0, next = 0;
+    var i;
+
+    for (i = 0; i < n; i++) {
+      if (label[i] !== 0 || mask.data[i] <= iso) continue;
+      next++;
+      var size = 0, sp = 0;
+      stack[sp++] = i;
+      label[i] = next;
+      while (sp > 0) {
+        var q = stack[--sp];
+        size++;
+        var qx = q % w, qy = (q / w) | 0;
+        if (qx > 0 && label[q - 1] === 0 && mask.data[q - 1] > iso) { label[q - 1] = next; stack[sp++] = q - 1; }
+        if (qx < w - 1 && label[q + 1] === 0 && mask.data[q + 1] > iso) { label[q + 1] = next; stack[sp++] = q + 1; }
+        if (qy > 0 && label[q - w] === 0 && mask.data[q - w] > iso) { label[q - w] = next; stack[sp++] = q - w; }
+        if (qy < h - 1 && label[q + w] === 0 && mask.data[q + w] > iso) { label[q + w] = next; stack[sp++] = q + w; }
+      }
+      if (size > bestSize) { bestSize = size; best = next; }
+    }
+
+    if (!best) return mask;
+    var out = new Field(w, h, 1);
+    for (i = 0; i < n; i++) out.data[i] = (label[i] === best) ? mask.data[i] : 0;
+    return out;
+  }
+
   CD.distanceInside = distanceInside;
+  CD.largestRegion = largestRegion;
+  CD.signedDistance = signedDistance;
   CD.clamp = clamp;
   CD.lerp = lerp;
   CD.smoothstep = smoothstep;

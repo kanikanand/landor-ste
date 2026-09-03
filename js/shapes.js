@@ -45,8 +45,14 @@ var CD = window.CD || {};
     }
   };
 
+  /* A shape is a list of parts, not one merged path. Merging loses each
+   * element's own paint: a subpath meant to punch a hole with fill-rule
+   * evenodd gets filled solid under the default nonzero rule, and art defined
+   * by stroke with no fill turns into a blob. Both read as "the shape came in
+   * as a filled silhouette". */
   function Shape(def) {
-    this.d = def.d;
+    this.parts = def.parts || [{ d: def.d, stroke: false, width: 0, rule: 'nonzero' }];
+    this.d = this.parts[0].d;
     this.spin = def.spin !== false;
     this.round = !!def.round;
     /* normalisation applied *inside* the unit box: scale then recentre */
@@ -55,22 +61,31 @@ var CD = window.CD || {};
     this.cx = def.cx || 0;
     this.cy = def.cy || 0;
     this.name = def.name || 'shape';
-    this._path = null;
+    this._paths = null;
   }
 
-  /* Lazily built Path2D, pre-normalised so callers only apply the per-dot
-   * translate/rotate/scale. */
-  Shape.prototype.path2d = function () {
-    if (this._path) return this._path;
-    var p = new Path2D();
-    var inner = new Path2D(this.d);
-    var m = null;
-    if (typeof DOMMatrix !== 'undefined') {
-      m = new DOMMatrix().scaleSelf(this.nsx, this.nsy).translateSelf(-this.cx, -this.cy);
-    }
-    if (m) p.addPath(inner, m); else p.addPath(inner);
-    this._path = p;
-    return p;
+  /* Lazily built Path2D per part, pre-normalised so callers only apply the
+   * per-dot translate/rotate/scale. */
+  Shape.prototype.paths = function () {
+    if (this._paths) return this._paths;
+    var self = this;
+    var m = (typeof DOMMatrix !== 'undefined')
+      ? new DOMMatrix().scaleSelf(this.nsx, this.nsy).translateSelf(-this.cx, -this.cy)
+      : null;
+    this._paths = this.parts.map(function (part) {
+      var p = new Path2D();
+      var inner = new Path2D(part.d);
+      if (m) p.addPath(inner, m); else p.addPath(inner);
+      return {
+        p2d: p,
+        stroke: part.stroke,
+        /* stroke width is in the source file's units, and normalisation is
+         * baked into the geometry, so it has to be scaled to match */
+        width: part.width * self.nsx,
+        rule: part.rule
+      };
+    });
+    return this._paths;
   };
 
   /* Uploaded shapes carry two normalisations and can switch between them
@@ -79,7 +94,7 @@ var CD = window.CD || {};
     var f = (mode === 'ink' ? this._ink : this._box) || this._ink;
     if (!f || (this.nsx === f.nsx && this.cx === f.cx && this.cy === f.cy)) return;
     this.nsx = f.nsx; this.nsy = f.nsy; this.cx = f.cx; this.cy = f.cy;
-    this._path = null;
+    this._paths = null;
   };
 
   /* The transform that maps the raw path into the unit box, as an SVG string.
@@ -182,7 +197,17 @@ var CD = window.CD || {};
     ctx.translate(x, y);
     if (shape.spin) ctx.rotate(rotation);
     ctx.scale(size, size);
-    ctx.fill(shape.path2d());
+    var parts = shape.paths();
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i];
+      if (part.stroke) {
+        ctx.strokeStyle = ctx.fillStyle;
+        ctx.lineWidth = part.width;
+        ctx.stroke(part.p2d);
+      } else {
+        ctx.fill(part.p2d, part.rule);
+      }
+    }
     ctx.restore();
   }
 
@@ -252,6 +277,37 @@ var CD = window.CD || {};
     return null;
   }
 
+  function parseInlineStyle(text) {
+    var out = {};
+    if (!text) return out;
+    text.split(';').forEach(function (decl) {
+      var i = decl.indexOf(':');
+      if (i > 0) out[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
+    });
+    return out;
+  }
+
+  /* Resolve the paint that actually applies to an element, walking up through
+   * ancestor <g>s — icon sets routinely set fill="none" stroke="currentColor"
+   * once on a wrapper rather than on every child. */
+  function paintOf(el) {
+    var out = { fill: null, stroke: null, width: null, rule: null };
+    var keys = { fill: 'fill', stroke: 'stroke', width: 'stroke-width', rule: 'fill-rule' };
+    var node = el;
+    while (node && node.nodeType === 1) {
+      var st = parseInlineStyle(node.getAttribute('style'));
+      Object.keys(keys).forEach(function (k) {
+        if (out[k] !== null) return;
+        var attr = keys[k];
+        var v = st[attr] !== undefined ? st[attr] : node.getAttribute(attr);
+        if (v !== null && v !== undefined && v !== '') out[k] = String(v).trim();
+      });
+      if (node.tagName && node.tagName.toLowerCase() === 'svg') break;
+      node = node.parentNode;
+    }
+    return out;
+  }
+
   /* Parse SVG source text into a Shape. Throws with a readable message. */
   function shapeFromSVG(text, name) {
     var doc = new DOMParser().parseFromString(text, 'image/svg+xml');
@@ -268,29 +324,49 @@ var CD = window.CD || {};
     var parts = [];
     for (var i = 0; i < nodes.length; i++) {
       var d = elementToPath(nodes[i]);
-      if (d) parts.push(d);
+      if (!d) continue;
+      var paint = paintOf(nodes[i]);
+
+      /* SVG defaults: fill black, stroke none. */
+      var filled = !(paint.fill && paint.fill.toLowerCase() === 'none');
+      var stroked = !!(paint.stroke && paint.stroke.toLowerCase() !== 'none');
+      var sw = parseFloat(paint.width);
+      if (!isFinite(sw) || sw <= 0) sw = 1;
+      var rule = (paint.rule && paint.rule.toLowerCase() === 'evenodd') ? 'evenodd' : 'nonzero';
+
+      if (filled) parts.push({ d: d, stroke: false, width: 0, rule: rule });
+      if (stroked) parts.push({ d: d, stroke: true, width: sw, rule: rule });
     }
     if (!parts.length) {
-      throw new Error('No drawable shapes found in that SVG. Flatten strokes to fills and retry.');
+      throw new Error('No visible shapes in that SVG — every element is fill="none" with no stroke.');
     }
-    var combined = parts.join(' ');
 
-    /* Measure with a real, laid-out SVG node — the only reliable way to get a
-     * bounding box for arbitrary path data. */
+    /* Measure with real, laid-out SVG nodes — the only reliable way to get a
+     * bounding box for arbitrary path data. getBBox reports geometry only, so
+     * a stroked part is inflated by half its width to cover the ink. */
     var probe = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     probe.setAttribute('width', '10'); probe.setAttribute('height', '10');
     probe.style.cssText = 'position:absolute;left:-9999px;top:-9999px;opacity:0';
-    var pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    pathEl.setAttribute('d', combined);
-    probe.appendChild(pathEl);
     document.body.appendChild(probe);
-    var bb;
-    try { bb = pathEl.getBBox(); }
-    finally { document.body.removeChild(probe); }
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    try {
+      for (var j = 0; j < parts.length; j++) {
+        var pe = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        pe.setAttribute('d', parts[j].d);
+        probe.appendChild(pe);
+        var b = pe.getBBox();
+        var pad = parts[j].stroke ? parts[j].width / 2 : 0;
+        if (b.width || b.height || pad) {
+          x0 = Math.min(x0, b.x - pad); y0 = Math.min(y0, b.y - pad);
+          x1 = Math.max(x1, b.x + b.width + pad); y1 = Math.max(y1, b.y + b.height + pad);
+        }
+      }
+    } finally { document.body.removeChild(probe); }
 
-    if (!bb || !bb.width || !bb.height) {
+    if (!isFinite(x0) || x1 <= x0 || y1 <= y0) {
       throw new Error('That SVG has no measurable area.');
     }
+    var bb = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 
     /* Two ways to normalise into the unit box, both kept:
      *
@@ -313,7 +389,7 @@ var CD = window.CD || {};
     }
 
     var shape = new Shape({
-      d: combined,
+      parts: parts,
       spin: true,
       name: name || 'custom'
     });

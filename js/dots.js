@@ -1,7 +1,7 @@
 /* ============================================================================
  * dots.js — turning contour streamlines into oriented dots.
  *
- * Walks each streamline by arc length and emits a dot every `dotSpacing`
+ * Walks each line by arc length and emits a dot every `dotSpacing`
  * pixels, where the spacing, the size and the colour are all read from the
  * DEPTH field, and the rotation is read from the FLOW field:
  *
@@ -28,6 +28,10 @@ var CD = window.CD || {};
     var p = ctx.params;
     var rng = ctx.rng;
 
+    var bandLimit = ctx.bandLimit || null;   // edge mode: tone gates the bands
+    var valueField = ctx.valueField || depth; // what `d` means for this mode
+    var uniformSpacing = !!ctx.uniformSpacing;
+
     var dots = [];
     var jitter = p.randomness;
     var spacingBase = Math.max(0.6, p.dotSpacing);
@@ -38,8 +42,10 @@ var CD = window.CD || {};
     var edgeW = Math.max(0.001, p.edgeWidth) * s;
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
-      var pts = lines[li];
-      if (pts.length < 4) continue;
+      var line = lines[li];
+      var pts = line.pts;
+      var band = line.band || 0;
+      if (!pts || pts.length < 4) continue;
 
       var carry = rng() * spacingBase; // desync the phase of each line
       for (var i = 0; i < pts.length - 2; i += 2) {
@@ -55,10 +61,16 @@ var CD = window.CD || {};
           var x = ax + ux * t, y = ay + uy * t;
           var fx = x * s, fy = y * s;
           var m = mask.sample(fx, fy, 0);
-          var d = depth.sample(fx, fy, 0);
+          var d = valueField.sample(fx, fy, 0);
 
-          /* size: depth drives the base, size variation adds the scatter */
-          var base = p.dotSize * lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff));
+          /* Size: the tone ramp is optional. An overlay that identifies a
+           * subject wants an even mark — the reference sets read as a single
+           * repeated dot — whereas the surface renderer wants dots that shrink
+           * as the form recedes. `sizeByTone` is how much of that ramp to
+           * apply. */
+          var toneScale = lerp(1, lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff)),
+                               clamp(p.sizeByTone, 0, 1));
+          var base = p.dotSize * toneScale;
           var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
           var size = base * vary;
 
@@ -74,14 +86,26 @@ var CD = window.CD || {};
            * viewer. Near dots are also the biggest, so the step is floored at
            * a little over one diameter — otherwise the densest, largest dots
            * fuse into a solid line and the halftone reads as fill. */
-          var localSpacing = spacingBase * lerp(1.5, 0.68, d);
+          var localSpacing = uniformSpacing ? spacingBase : spacingBase * lerp(1.5, 0.68, d);
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
           localSpacing = Math.max(size * 2.15, localSpacing);
 
-          if (m > 0.5 && size > 0.16) {
-            /* rotation follows the contour */
-            var dir = CD.dirAt(flow, fx, fy);
-            var rot = Math.atan2(dir.y, dir.x);
+          /* In edge mode the contours deliberately run out into the
+           * background, so the silhouette mask must not cull them; the tone
+           * gate below decides what survives instead. */
+          var alive = bandLimit ? (band + 1 <= bandLimit(fx, fy)) : (m > 0.5);
+
+          if (alive && size > 0.16) {
+            /* Rotation follows the contour. With a flow field that is the
+             * field direction; on an extracted iso-line it is the line's own
+             * tangent, which is the same thing measured directly. */
+            var rot;
+            if (flow) {
+              var dir = CD.dirAt(flow, fx, fy);
+              rot = Math.atan2(dir.y, dir.x);
+            } else {
+              rot = Math.atan2(uy, ux);
+            }
             rot += (rng() - 0.5) * 2 * jitter * 0.9;
 
             /* relief displacement along the depth gradient */

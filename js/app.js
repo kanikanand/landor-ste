@@ -23,7 +23,7 @@ var CD = window.CD || {};
     srcName: 'sample',
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
-    dep: null, flow: null, lines: [], dots: [],
+    dep: null, flow: null, sd: null, lines: [], dots: [],
     pendingShapeSlot: null,
     ramp: null,
     dirty: 'depth',
@@ -178,12 +178,26 @@ var CD = window.CD || {};
   }
 
   function stageFlow(p) {
+    /* Edge mode takes its direction from the extracted contour's own tangent,
+     * so there is no field to build. */
+    if (p.renderMode === 'edge') { state.flow = null; return; }
     state.flow = CD.buildFlow(state.dep, p, function (x, y) {
       return (typeof noise === 'function') ? noise(x, y) : 0.5;
     });
   }
 
   function stageLines(p) {
+    if (p.renderMode === 'edge') {
+      var built = CD.buildEdgeLines({
+        dep: state.dep,
+        params: p,
+        fieldScale: state.fieldScale
+      });
+      state.lines = built.lines;
+      state.sd = built.sd;
+      return;
+    }
+
     var tracer = new CD.Tracer({
       flow: state.flow,
       depth: state.dep.depth,
@@ -193,10 +207,14 @@ var CD = window.CD || {};
       params: p,
       rng: CD.makeRng(p.seed)
     });
-    state.lines = tracer.run();
+    /* The tracer yields bare polylines; the dot builder takes banded lines. */
+    state.lines = tracer.run().map(function (pts) {
+      return { pts: pts, band: 0 };
+    });
   }
 
   function stageDots(p) {
+    var edgeMode = p.renderMode === 'edge';
     state.dots = CD.buildDots({
       lines: state.lines,
       depth: state.dep.depth,
@@ -206,7 +224,14 @@ var CD = window.CD || {};
       flow: state.flow,
       fieldScale: state.fieldScale,
       params: p,
-      rng: CD.makeRng(p.seed ^ 0x9e3779b9)
+      rng: CD.makeRng(p.seed ^ 0x9e3779b9),
+      /* Edge mode reads the picture's tonality rather than its depth: that is
+       * what gates the bands, tints the dots and picks the tone shapes. Dots
+       * are also evenly spaced along each contour — the density in the darks
+       * comes from stacking more bands, not from crowding one. */
+      valueField: edgeMode ? state.dep.tone : state.dep.depth,
+      uniformSpacing: edgeMode,
+      bandLimit: edgeMode ? CD.makeBandLimit(state.dep.tone, p) : null
     });
   }
 
@@ -266,6 +291,26 @@ var CD = window.CD || {};
     ctx.restore();
   }
 
+  function paintMask() {
+    var mask = state.dep.mask;
+    var off = document.createElement('canvas');
+    off.width = mask.w; off.height = mask.h;
+    var octx = off.getContext('2d');
+    var img = octx.createImageData(mask.w, mask.h);
+    for (var i = 0; i < mask.w * mask.h; i++) {
+      var on = mask.data[i] > 0.5;
+      img.data[i * 4] = 0;
+      img.data[i * 4 + 1] = on ? 200 : 0;
+      img.data[i * 4 + 2] = on ? 255 : 0;
+      img.data[i * 4 + 3] = on ? 90 : 0;
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, state.viewW, state.viewH);
+    ctx.restore();
+  }
+
   function stageDraw() {
     var p = state.params;
     if (!ctx) return;
@@ -275,6 +320,23 @@ var CD = window.CD || {};
     ctx.fillStyle = p.background;
     ctx.fillRect(0, 0, state.viewW, state.viewH);
     ctx.restore();
+
+    /* The source photograph sits under the dots: the contours are an overlay
+     * that identifies the subject, not a replacement for it. */
+    if (p.showImage && state.srcCanvas) {
+      ctx.save();
+      ctx.globalAlpha = CD.clamp(p.imageOpacity, 0, 1);
+      ctx.drawImage(state.srcCanvas, 0, 0, state.viewW, state.viewH);
+      ctx.restore();
+    }
+
+    /* Silhouette preview. The contours are offsets of the mask boundary, so
+     * when the edge lands somewhere unexpected the question is always "what
+     * does the threshold actually think the subject is" — worth being able to
+     * see rather than infer. */
+    if (p.showMask && state.dep) {
+      paintMask();
+    }
 
     if (p.glowAmount > 0.001 && p.glowRadius > 0.001) paintGlow();
 
@@ -391,6 +453,17 @@ var CD = window.CD || {};
     return counts;
   }
 
+  /* The source photograph as a data URI, so an exported SVG is self-contained
+   * rather than referencing a file the recipient does not have. JPEG because a
+   * lossless copy of a photograph would dwarf the vector payload. */
+  function imageDataURL() {
+    try {
+      return state.srcCanvas.toDataURL('image/jpeg', 0.88);
+    } catch (e) {
+      return null;
+    }
+  }
+
   function exportSVG() {
     if (!state.dots.length) { status('Nothing to export yet.', true); return; }
     if (state.pendingFull || state.quality !== 'full') {
@@ -410,6 +483,8 @@ var CD = window.CD || {};
       glowRadius: p.glowRadius,
       toneSplitLow: p.toneSplitLow,
       toneSplitHigh: p.toneSplitHigh,
+      image: (p.showImage && p.embedImage && state.srcCanvas) ? imageDataURL() : null,
+      imageOpacity: p.imageOpacity,
       title: state.srcName + ' — contour dots'
     });
     CD.download(state.srcName + '-contour-dots.svg', svg);
@@ -543,7 +618,10 @@ var CD = window.CD || {};
     noLoop();
 
     ui = CD.UI.buildPanel(document.getElementById('controls'), state.params,
-      function (stage) { markDirty(stage); },
+      function (stage) {
+        if (ui) ui.syncVisibility();
+        markDirty(stage);
+      },
       { pickShape: function (slot) {
           state.pendingShapeSlot = slot || null;
           document.getElementById('shapeInput').click();

@@ -47,15 +47,20 @@ var CD = window.CD || {};
     var d = depth.data;
 
     /* 1. luminance -> depth. White is near, black is far, per the brief. */
+    var tone = new CD.Field(w, h, 1);
     for (i = 0; i < n; i++) {
       var r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
       var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      tone.data[i] = lum;
       d[i] = p.invert ? 1 - lum : lum;
     }
 
     /* 2. image-level contrast, before anything structural happens. */
     if (p.imageContrast !== 1) {
-      for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.imageContrast);
+      for (i = 0; i < n; i++) {
+        d[i] = contrastCurve(d[i], p.imageContrast);
+        tone.data[i] = contrastCurve(tone.data[i], p.imageContrast);
+      }
     }
 
     /* 3. depth smoothing. This is what turns a noisy photograph into a
@@ -66,6 +71,14 @@ var CD = window.CD || {};
     if (p.depthContrast !== 1) {
       for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.depthContrast);
     }
+
+    /* 5a. Tonality is how light or dark the photograph is here — 1 light, 0
+     *     dark. Deliberately taken from the raw luminance and never inverted:
+     *     Invert exists to say which side of the threshold is the subject,
+     *     which is a separate question from which parts of the picture are
+     *     dark. Gating the shading on an inverted tone would put the banding
+     *     in the highlights. */
+    tone.blur(p.depthSmoothing, 3);
 
     /* 5. threshold carves the negative space. Everything under the threshold
      *    is *nothing* — pure background, not a dark dot. The remaining range
@@ -78,6 +91,8 @@ var CD = window.CD || {};
       m[i] = smoothstep(t, t + soft, d[i]);
       d[i] = clamp((d[i] - t) * inv, 0, 1);
     }
+    if (p.largestRegion) mask = CD.largestRegion(mask, 0.5);
+
     /* feather the mask edge slightly so contours die out instead of snapping */
     mask.blur(1, 1);
 
@@ -105,7 +120,7 @@ var CD = window.CD || {};
       }
     }
 
-    return { depth: depth, mask: mask, edge: edge, grad: grad, w: w, h: h };
+    return { depth: depth, tone: tone, mask: mask, edge: edge, grad: grad, w: w, h: h };
   }
 
   /* --------------------------------------------------------------------------

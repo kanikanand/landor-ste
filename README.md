@@ -1,8 +1,17 @@
 # Contour Dots
 
-A standalone p5.js prototype that turns a photograph into a field of oriented
-dots flowing along the contours of its implied 3D form, and exports the result
-as a fully editable SVG.
+A standalone p5.js prototype that finds contours in a photograph and draws them
+as fields of oriented dots, exported as fully editable SVG.
+
+It has two renderers, chosen by the **Mode** switch at the top of the panel:
+
+- **Edge** (the default) — identifies the boundary between subject and
+  background and lays dots along it, over the photograph. Contours step away
+  from that edge in parallel bands, and how many bands appear at any point is
+  decided by how dark the picture is there: a single line through the light
+  regions, thickening into shading in the darks.
+- **Surface** — the original renderer: treats the image as a height map and
+  fills the whole form with dots flowing along its iso-depth contours.
 
 ![pipeline: depth field, flow field, streamlines, oriented dots](docs/preview.png)
 
@@ -29,7 +38,69 @@ clean depth map — a surface lit from the upper left — because that is what a
 real photograph looks like going in, and the pipeline has to recover depth
 from luminance either way.
 
-## The idea
+## The edge renderer
+
+Everything here rests on one field: the **signed distance** to the silhouette,
+positive inside the subject and negative out in the background.
+
+```
+sd(x, y) = distance to the subject/background boundary,  signed
+```
+
+Its zero level *is* the edge, and every other level is a clean parallel offset
+from it. So "one contour" and "eight contours stepping outward" are the same
+operation at different levels rather than two code paths, and the contours are
+extracted exactly, by marching squares, rather than approximated.
+
+### Shading
+
+![the same image at three shading settings](docs/edge-shading.png)
+
+How many of those contours actually appear at a given place is decided by the
+picture's own tonality. Dark regions earn the full stack of bands and read as
+shading; light regions keep only band 0 and read as a single line tracing the
+subject:
+
+```
+bands allowed here = 1 + (Number of lines - 1) x Shading x darkness ^ Shading falloff
+```
+
+Band 0 is always allowed, so the subject never loses its outline. At
+**Shading** 0 every region keeps exactly one contour, whatever the tone.
+
+Tonality is deliberately taken from the raw luminance and is never inverted.
+**Invert depth** exists to say which side of the threshold is the subject,
+which is a separate question from which parts of the picture are dark —
+gating the shading on an inverted tone would put the banding in the
+highlights.
+
+### The silhouette
+
+The subject is whatever falls on one side of **Threshold**, so that control is
+doing the real work. Two things help:
+
+- **Largest region only** (on by default) keeps a single subject. Without it,
+  any background patch that happens to cross the threshold grows its own
+  silhouette and the contours go wandering off across the sky.
+- **Preview silhouette** tints what the threshold currently calls the subject.
+  When the edge lands somewhere unexpected the question is always "what does
+  the threshold actually think the subject is", and that is worth being able
+  to see rather than infer.
+
+A single global threshold is what it is: on a strongly graded background it
+cannot separate subject from background at any setting, because some of the
+background genuinely is darker than some of the subject. The preview makes
+that visible immediately instead of leaving you turning knobs.
+
+### The image underneath
+
+The photograph is drawn under the dots — the contours identify the subject
+rather than replacing it. **Show image** and **Image opacity** control that,
+and **Embed image in SVG** writes the photograph into the export so the file
+stands alone. Embedding roughly triples the file size for a typical render;
+turn it off for a purely geometric SVG.
+
+## The surface renderer
 
 The image is not treated as brightness to be halftoned. It is treated as a
 **height map**, and everything else is derived from it. There are two fields.
@@ -99,11 +170,27 @@ drawDot(ctx, x, y, size, rotation, type)
 | `custom`   | any uploaded SVG, normalised to the unit box |
 | `tones`    | three uploaded SVGs, chosen per dot by depth |
 
-Uploading an SVG flattens its `path` / `circle` / `rect` / `ellipse` /
-`polygon` / `polyline` / `line` elements into a single path, measures it with
-`getBBox()`, and fits it into the same unit box preserving aspect ratio. The
+Uploading an SVG collects its `path` / `circle` / `rect` / `ellipse` /
+`polygon` / `polyline` / `line` elements and fits them into the unit box. The
 canvas renderer and the SVG exporter consume that one definition, so what you
 export is exactly what you saw.
+
+A shape is kept as a **list of parts, each with its own paint** — not merged
+into a single filled path. Merging loses exactly the information that makes a
+shape a shape:
+
+- A subpath meant to punch a hole, declared `fill-rule="evenodd"`, fills solid
+  under the default `nonzero` rule. Rings, frames and letter counters all come
+  in as blobs.
+- Art defined by `stroke` with `fill="none"` has no fill to draw, so filling
+  its outline turns a thin ring into a disc.
+
+Each element's own `fill`, `stroke`, `stroke-width` and `fill-rule` are read
+and honoured, inheriting from ancestor `<g>`s — icon sets routinely set
+`fill="none" stroke="currentColor"` once on a wrapper rather than on every
+child. In the export, stroked parts take their colour from `currentColor`,
+which the enclosing colour group sets alongside `fill`, so one group still
+drives every dot in a bucket.
 
 ### Tone-mapped shapes
 
@@ -205,6 +292,8 @@ punchier additive blend.
   friendlier to downstream tools.
 - Dots are grouped into colour buckets as `<g fill>` groups rather than
   carrying a fill attribute each.
+- In Edge mode the photograph is embedded as a JPEG data URI in an `<image>`
+  under the dots, so the file stands alone.
 - With the glow on, the dot layer goes into `<defs>` once and is drawn twice
   with `<use>` — blurred underneath, crisp on top. Emitting the dots twice
   would double the file for nothing; as it is, the glow costs about 0.1%.
@@ -212,7 +301,7 @@ punchier additive blend.
   import. Set Glow to 0 before exporting if you need a purely geometric file.
 
 Every dot arrives in Illustrator or Figma as an individual editable object.
-Export fidelity is verified against the canvas: 99.4–99.8% pixel overlap
+Export fidelity for the vector layer is verified against the canvas: 99.4–99.8% pixel overlap
 across all shape types, the remainder being antialiasing on dot edges. With
 the glow on, that binary measure is the wrong instrument — a soft halo puts
 many pixels right at the threshold — so parity there is measured as mean
@@ -224,21 +313,32 @@ baseline.
 
 ## Controls
 
-**Image** — Threshold (carves the negative space), Contrast, Invert depth
-(for a subject lit dark-on-light).
+**Render** — Mode: Edge or Surface. Controls that belong to one renderer are
+hidden in the other.
 
-**Depth** — Depth exaggeration (displaces each dot along the depth gradient;
+**Image** — Threshold (defines the silhouette in Edge mode; carves the
+negative space in Surface mode), Contrast, Invert depth, Largest region only,
+Preview silhouette, Show image, Image opacity, Embed image in SVG.
+
+**Contours (Edge)** — Number of lines, Spread (which side of the edge the
+extra contours step towards), Shading, Shading falloff, Line spacing.
+
+**Depth (Surface)** — Depth exaggeration (displaces each dot along the depth gradient;
 this is the relief that makes the bands bulge towards the viewer rather than
 read as a flat contour map), Depth contrast, Depth smoothing (turns a noisy
 photograph into a continuous surface — contours need this).
 
-**Contours** — Line density, Line spacing, Flow strength (0 = straight lines
-at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
-Flow coherence.
+**Contours (Surface)** — Line density, Flow strength (0 = straight lines at
+the base angle, 1 = pure depth contours), Flow distortion, Base angle, Flow
+coherence.
 
 **Dots** — Shape, Scale to artboard, Dark → mid, Mid → bright, Dot size,
-Size variation, Size falloff, Dot spacing, Randomness, Edge falloff,
-Edge width.
+Size variation, Size by tone, Size falloff, Dot spacing, Randomness, and
+(Surface only) Edge falloff and Edge width.
+
+**Size by tone** defaults to 0, an even mark — which is what an overlay wants,
+and what the reference sets are. Raise it towards 1 for the Surface renderer,
+where dots shrinking as the form recedes is most of the effect.
 
 **Glow** — Glow, Glow radius.
 
@@ -265,6 +365,9 @@ black work best.
   map and starts being a striped halftone; both are useful.
 - If the subject is dark against a light ground, turn on **Invert depth**
   first — nothing else will behave until the near/far sense is right.
+- In Edge mode, turn on **Preview silhouette** before anything else and set
+  **Threshold** until the tinted region is the subject. Every contour is an
+  offset of that boundary, so nothing downstream can be right until it is.
 - **Edge falloff** is worth reaching for whenever the silhouette reads as cut
   out rather than lit; set **Edge width** to roughly the width of the falloff
   you want in pixels.
@@ -300,9 +403,12 @@ possible settings (~100k dots) take about 3 s.
 index.html            markup + script order
 css/style.css         tool chrome
 js/core.js            Field container (bilinear sampling, separable blur),
-                      exact Euclidean distance transform, math
-js/field.js           depth field, gradient, flow field
-js/streamlines.js     evenly-spaced streamline tracer + spatial hash
+                      exact Euclidean distance transform, signed distance,
+                      connected-region isolation, math
+js/field.js           depth field, tonality, silhouette mask, gradient, flow
+js/streamlines.js     evenly-spaced streamline tracer + spatial hash (Surface)
+js/isolines.js        marching squares: iso-contours as linked polylines
+js/edge.js            signed-distance bands and the tone gate (Edge)
 js/shapes.js          the dot primitive, drawDot, SVG shape upload
 js/dots.js            streamlines -> oriented dots, edge falloff, colour ramp
 js/svgexport.js       vector export
