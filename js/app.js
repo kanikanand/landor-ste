@@ -24,6 +24,7 @@ var CD = window.CD || {};
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
     dep: null, flow: null, lines: [], dots: [],
+    pendingShapeSlot: null,
     ramp: null,
     dirty: 'depth',
     pendingFull: null,
@@ -223,6 +224,9 @@ var CD = window.CD || {};
       b = (dots[i].d * buckets) | 0;
       groups[b < 0 ? 0 : (b > buckets - 1 ? buckets - 1 : b)].push(dots[i]);
     }
+    /* In tone mode the primitive is resolved per dot from its depth; otherwise
+     * it is the same for all of them and the lookup is hoisted out. */
+    var toneMode = p.shapeType === 'tones';
     for (b = 0; b < buckets; b++) {
       var list = groups[b];
       if (!list.length) continue;
@@ -230,7 +234,8 @@ var CD = window.CD || {};
       c2d.fillStyle = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
       for (i = 0; i < list.length; i++) {
         var d = list[i];
-        CD.drawDot(c2d, d.x, d.y, d.s, d.r, p.shapeType);
+        CD.drawDot(c2d, d.x, d.y, d.s, d.r,
+          toneMode ? CD.shapeTypeForDepth(p, d.d) : p.shapeType);
       }
     }
   }
@@ -384,6 +389,8 @@ var CD = window.CD || {};
       colorGamma: p.colorGamma,
       glowAmount: p.glowAmount,
       glowRadius: p.glowRadius,
+      toneSplitLow: p.toneSplitLow,
+      toneSplitHigh: p.toneSplitHigh,
       title: state.srcName + ' — contour dots'
     });
     CD.download(state.srcName + '-contour-dots.svg', svg);
@@ -416,18 +423,28 @@ var CD = window.CD || {};
 
     shapeInput.addEventListener('change', function () {
       var f = shapeInput.files[0];
+      var slot = state.pendingShapeSlot;
+      state.pendingShapeSlot = null;
       shapeInput.value = '';
       if (!f) return;
       var fr = new FileReader();
       fr.onload = function () {
         try {
           var shape = CD.shapeFromSVG(fr.result, f.name);
-          CD.setCustomShape(shape);
-          state.params.shapeType = 'custom';
-          if (ui.refs.shapeType.customLoaded) ui.refs.shapeType.customLoaded(f.name);
-          ui.refs.shapeType.set('custom');
+          if (slot) {
+            CD.setToneShape(slot, shape);
+            state.params.shapeType = 'tones';
+            if (ui.refs.shapeType.toneLoaded) ui.refs.shapeType.toneLoaded(slot, f.name);
+            ui.refs.shapeType.set('tones');
+            status(slot + ' tone shape set from ' + f.name);
+          } else {
+            CD.setCustomShape(shape);
+            state.params.shapeType = 'custom';
+            if (ui.refs.shapeType.customLoaded) ui.refs.shapeType.customLoaded(f.name);
+            ui.refs.shapeType.set('custom');
+            status('Dot shape set from ' + f.name);
+          }
           markDirty('draw');
-          status('Dot shape set from ' + f.name);
         } catch (e) {
           status(e.message, true);
         }
@@ -445,8 +462,13 @@ var CD = window.CD || {};
     });
 
     $('#reset').addEventListener('click', function () {
+      /* Copy the defaults *into* the existing params object rather than
+       * replacing it. Every control closure in the panel holds a reference to
+       * this exact object; swapping it out orphans all of them and silently
+       * makes the whole panel inert. */
+      var defaults = CD.UI.defaults();
       var seed = state.params.seed;
-      state.params = CD.UI.defaults();
+      Object.keys(defaults).forEach(function (k) { state.params[k] = defaults[k]; });
       state.params.seed = seed;
       ui.syncAll();
       markDirty('depth');
@@ -469,6 +491,9 @@ var CD = window.CD || {};
       var f = e.dataTransfer.files[0];
       if (!f) return;
       if (/svg/.test(f.type) || /\.svg$/i.test(f.name)) {
+        /* A dropped SVG always sets the single Custom shape; the three tone
+         * slots are explicit, so a stale pick cannot capture it. */
+        state.pendingShapeSlot = null;
         var dt = new DataTransfer();
         dt.items.add(f);
         shapeInput.files = dt.files;
@@ -500,7 +525,10 @@ var CD = window.CD || {};
 
     ui = CD.UI.buildPanel(document.getElementById('controls'), state.params,
       function (stage) { markDirty(stage); },
-      { pickShape: function () { document.getElementById('shapeInput').click(); } });
+      { pickShape: function (slot) {
+          state.pendingShapeSlot = slot || null;
+          document.getElementById('shapeInput').click();
+        } });
 
     wireChrome();
     setSource(makeSampleImage(), 'sample');

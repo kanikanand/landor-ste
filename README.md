@@ -97,12 +97,42 @@ drawDot(ctx, x, y, size, rotation, type)
 | `diamond`  | turns with the contour                      |
 | `line`     | a capsule — the most directional of the set |
 | `custom`   | any uploaded SVG, normalised to the unit box |
+| `tones`    | three uploaded SVGs, chosen per dot by depth |
 
 Uploading an SVG flattens its `path` / `circle` / `rect` / `ellipse` /
 `polygon` / `polyline` / `line` elements into a single path, measures it with
 `getBBox()`, and fits it into the same unit box preserving aspect ratio. The
 canvas renderer and the SVG exporter consume that one definition, so what you
 export is exactly what you saw.
+
+### Tone-mapped shapes
+
+`Tones` mode takes three uploaded SVGs — **Dark**, **Mid**, **Bright** — and
+picks between them per dot, from the same depth value that already drives
+size, density and colour. The primitive itself changes as the surface
+recedes: a fine or open mark in the dark, far regions, a solid one in the
+bright, near ones. Because all four channels read the same field, they cannot
+disagree about where the form is.
+
+![three shapes mapped to the dark, mid and bright bands](docs/tone-shapes.png)
+
+Above: open rings in the dark falloff, chevrons through the mid-tones, solid
+rounded squares on the lit near side — each still rotating to follow the
+contour. Dot size is exaggerated here to make the primitives legible; at
+normal size they read as texture rather than as distinct marks.
+
+Two sliders set the band boundaries: **Dark → mid** and **Mid → bright**, in
+depth units. They are independent, so they can be dragged past each other;
+that is ordered internally rather than silently erasing the middle band.
+
+You do not have to fill all three. An empty slot borrows from its nearest
+filled neighbour, so a single upload already gives a usable result and you can
+add the others as you go. The `Tones` button stays disabled until at least one
+slot is filled.
+
+The single-shape `Custom` slot is unchanged and independent, and a dragged-and
+-dropped SVG still goes to it — the three tone slots are only ever filled by
+their own explicit buttons, so a drop can never land in one by surprise.
 
 ## Edge falloff and glow
 
@@ -139,9 +169,10 @@ punchier additive blend.
 
 `Export SVG` writes real vector geometry, not a traced bitmap:
 
-- The shape is emitted **once** into `<defs>`, and each dot is a `<use>`
-  carrying its own `translate / rotate / scale`. Swapping that single
-  definition restyles every dot in the file at once.
+- Each shape used is emitted **once** into `<defs>`, and each dot is a `<use>`
+  carrying its own `translate / rotate / scale`. Swapping one definition
+  restyles every dot that references it. In tone mode that means three
+  definitions, and only the ones actually placed are written.
 - Circles take a shorter path — a plain `<circle>` — which is smaller and
   friendlier to downstream tools.
 - Dots are grouped into colour buckets as `<g fill>` groups rather than
@@ -177,8 +208,8 @@ photograph into a continuous surface — contours need this).
 at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
 Flow coherence.
 
-**Dots** — Shape, Dot size, Size variation, Size falloff, Dot spacing,
-Randomness, Edge falloff, Edge width.
+**Dots** — Shape, Dark → mid, Mid → bright, Dot size, Size variation,
+Size falloff, Dot spacing, Randomness, Edge falloff, Edge width.
 
 **Glow** — Glow, Glow radius.
 

@@ -12,6 +12,10 @@
  *
  * `type` is "circle" | "square" | "diamond" | "line" | "custom", where custom
  * is any uploaded SVG, normalised into the same unit box.
+ *
+ * In tone mode the type is resolved per dot from the depth field instead, via
+ * shapeTypeForDepth() — three uploaded SVGs covering the dark, middle and
+ * bright bands of the surface.
  * ==========================================================================*/
 var CD = window.CD || {};
 
@@ -93,6 +97,56 @@ var CD = window.CD || {};
 
   function setCustomShape(shape) { registry.custom = shape; }
   function hasCustomShape() { return !!registry.custom; }
+
+  /* --------------------------------------------------------------------------
+   * Tone-mapped shapes.
+   *
+   * Three uploaded SVGs, one per tonal band of the depth field, so the dot
+   * primitive itself changes as the surface recedes: an open or fine mark in
+   * the dark, far regions, a solid one in the bright, near ones. This is the
+   * same depth value that drives size, density and colour, so all four move
+   * together and the bands never disagree about where the form is.
+   * ------------------------------------------------------------------------*/
+  var TONE_SLOTS = ['dark', 'mid', 'bright'];
+
+  /* If a slot is empty, borrow from the nearest filled neighbour rather than
+   * dropping a hole in the artwork — so one or two uploads already produce a
+   * usable result. */
+  var TONE_FALLBACK = {
+    dark: ['dark', 'mid', 'bright'],
+    mid: ['mid', 'bright', 'dark'],
+    bright: ['bright', 'mid', 'dark']
+  };
+
+  function toneKey(slot) { return 'tone-' + slot; }
+
+  function setToneShape(slot, shape) { registry[toneKey(slot)] = shape; }
+  function hasToneShape(slot) { return !!registry[toneKey(slot)]; }
+  function anyToneShape() {
+    for (var i = 0; i < TONE_SLOTS.length; i++) {
+      if (hasToneShape(TONE_SLOTS[i])) return true;
+    }
+    return false;
+  }
+
+  /* Which band a depth value falls in. The two split sliders are independent,
+   * so order them here rather than letting a crossed pair silently erase the
+   * middle band. */
+  function toneSlotForDepth(d, a, b) {
+    var lo = a < b ? a : b, hi = a < b ? b : a;
+    return d < lo ? 'dark' : (d < hi ? 'mid' : 'bright');
+  }
+
+  /* The registry key a dot of depth `d` should be drawn with. Returns
+   * params.shapeType unchanged unless the renderer is in tone mode. */
+  function shapeTypeForDepth(p, d) {
+    if (p.shapeType !== 'tones') return p.shapeType;
+    var order = TONE_FALLBACK[toneSlotForDepth(d, p.toneSplitLow, p.toneSplitHigh)];
+    for (var i = 0; i < order.length; i++) {
+      if (hasToneShape(order[i])) return toneKey(order[i]);
+    }
+    return 'circle';
+  }
 
   /* --------------------------------------------------------------------------
    * drawDot — the single primitive every dot goes through.
@@ -219,6 +273,11 @@ var CD = window.CD || {};
   CD.getShape = getShape;
   CD.setCustomShape = setCustomShape;
   CD.hasCustomShape = hasCustomShape;
+  CD.setToneShape = setToneShape;
+  CD.hasToneShape = hasToneShape;
+  CD.anyToneShape = anyToneShape;
+  CD.shapeTypeForDepth = shapeTypeForDepth;
+  CD.TONE_SLOTS = TONE_SLOTS;
   CD.drawDot = drawDot;
   CD.shapeFromSVG = shapeFromSVG;
   CD.SHAPE_TYPES = ['circle', 'square', 'diamond', 'line'];

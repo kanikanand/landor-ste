@@ -37,15 +37,14 @@ var CD = window.CD || {};
   }
 
   /* opts: {width, height, background, dots, shapeType, ramp, colorGamma,
-   *        glowAmount, glowRadius, title, buckets} */
+   *        glowAmount, glowRadius, toneSplitLow, toneSplitHigh, title,
+   *        buckets} */
   function buildSVG(opts) {
     var w = opts.width, h = opts.height;
-    var shape = CD.getShape(opts.shapeType);
     var dots = opts.dots;
     var ramp = opts.ramp;
     var gamma = opts.colorGamma;
     var buckets = opts.buckets || 24;
-    var isCircle = shape.round && !shape.custom;
 
     var out = [];
     out.push('<?xml version="1.0" encoding="UTF-8"?>');
@@ -55,25 +54,25 @@ var CD = window.CD || {};
     out.push('<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="' + opts.background + '"/>');
 
     var glow = opts.glowAmount > 0.001 && opts.glowRadius > 0.001;
+    var toneMode = opts.shapeType === 'tones';
 
+    /* Shapes are emitted into <defs> on demand: in tone mode a render can use
+     * up to three different primitives, and only the ones actually placed
+     * should end up in the file. */
     var defs = [];
-    if (!isCircle) {
-      var nt = shape.normTransform();
-      if (nt) {
-        defs.push('<g id="dot" transform="' + nt + '"><path d="' + shape.d + '"/></g>');
-      } else {
-        defs.push('<path id="dot" d="' + shape.d + '"/>');
+    var used = {};
+
+    function defIdFor(type) {
+      if (!used[type]) {
+        var sh = CD.getShape(type);
+        var id = 'dot-' + type;
+        var nt = sh.normTransform();
+        defs.push(nt
+          ? '<g id="' + id + '" transform="' + nt + '"><path d="' + sh.d + '"/></g>'
+          : '<path id="' + id + '" d="' + sh.d + '"/>');
+        used[type] = id;
       }
-    }
-    if (glow) {
-      /* userSpaceOnUse with an explicit margin: the default bounding-box
-       * filter region would clip a blur this wide at the edges of the art. */
-      var pad = Math.ceil(opts.glowRadius * 3);
-      defs.push('<filter id="glow" filterUnits="userSpaceOnUse" ' +
-        'x="' + (-pad) + '" y="' + (-pad) + '" ' +
-        'width="' + (w + pad * 2) + '" height="' + (h + pad * 2) + '">' +
-        '<feGaussianBlur stdDeviation="' + num(opts.glowRadius / 2, 2) + '"/>' +
-        '</filter>');
+      return used[type];
     }
 
     /* Group dots into a small number of colour buckets so the file is a
@@ -83,8 +82,8 @@ var CD = window.CD || {};
     var i;
     for (i = 0; i < buckets; i++) groups.push([]);
     for (i = 0; i < dots.length; i++) {
-      var b = Math.min(buckets - 1, Math.max(0, Math.floor(dots[i].d * buckets)));
-      groups[b].push(dots[i]);
+      var bi = Math.min(buckets - 1, Math.max(0, Math.floor(dots[i].d * buckets)));
+      groups[bi].push(dots[i]);
     }
 
     for (var g = 0; g < buckets; g++) {
@@ -95,28 +94,42 @@ var CD = window.CD || {};
       body.push('<g fill="' + col + '">');
       for (i = 0; i < list.length; i++) {
         var dt = list[i];
-        if (isCircle) {
+        var type = toneMode ? CD.shapeTypeForDepth(opts, dt.d) : opts.shapeType;
+        var sh = CD.getShape(type);
+
+        if (sh.round && !sh.custom) {
+          /* a circle is shorter and more portable as a real <circle> */
           body.push('<circle cx="' + num(dt.x) + '" cy="' + num(dt.y) +
                     '" r="' + num(dt.s, 3) + '"/>');
         } else {
+          var id = defIdFor(type);
           var t = 'translate(' + num(dt.x) + ' ' + num(dt.y) + ')';
-          if (shape.spin) {
+          if (sh.spin) {
             var deg = dt.r * DEG;
             /* squares and diamonds repeat every 90 degrees; folding the angle
              * into a short range keeps the numbers small */
-            if (opts.shapeType === 'square' || opts.shapeType === 'diamond') {
+            if (type === 'square' || type === 'diamond') {
               deg = ((deg % 90) + 90) % 90;
             }
             t += ' rotate(' + num(deg, 1) + ')';
           }
           t += ' scale(' + num(dt.s, 3) + ')';
-          body.push('<use xlink:href="#dot" href="#dot" transform="' + t + '"/>');
+          body.push('<use xlink:href="#' + id + '" href="#' + id +
+                    '" transform="' + t + '"/>');
         }
       }
       body.push('</g>');
     }
 
     if (glow) {
+      /* userSpaceOnUse with an explicit margin: the default bounding-box
+       * filter region would clip a blur this wide at the edges of the art. */
+      var pad = Math.ceil(opts.glowRadius * 3);
+      defs.push('<filter id="glow" filterUnits="userSpaceOnUse" ' +
+        'x="' + (-pad) + '" y="' + (-pad) + '" ' +
+        'width="' + (w + pad * 2) + '" height="' + (h + pad * 2) + '">' +
+        '<feGaussianBlur stdDeviation="' + num(opts.glowRadius / 2, 2) + '"/>' +
+        '</filter>');
       defs.push('<g id="dots">');
       pushAll(defs, body);
       defs.push('</g>');

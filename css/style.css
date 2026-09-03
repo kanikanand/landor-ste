@@ -219,3 +219,13 @@ input[type=color] {
   #panel { order: 2; border-right: 0; border-top: 1px solid var(--line); max-height: 50vh; }
   #stage { order: 1; min-height: 55vh; }
 }
+
+/* tone-mapped shape slots */
+.tone-uploads {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
+}
+.tone-uploads .help { margin: 0 0 8px; }
+.tone-uploads .upload-row { margin-top: 6px; }
+.tone-slot { min-width: 62px; text-align: center; }

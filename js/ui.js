@@ -52,6 +52,10 @@ var CD = window.CD || {};
       group: 'Dots', hint: 'Oriented primitives, not particles.',
       controls: [
         { key: 'shapeType', label: 'Shape', type: 'shape', def: 'circle', stage: 'draw' },
+        { key: 'toneSplitLow', label: 'Dark \u2192 mid', min: 0, max: 1, step: 0.01, def: 0.33, stage: 'draw',
+          help: 'Depth below this uses the dark shape. Tones mode only.' },
+        { key: 'toneSplitHigh', label: 'Mid \u2192 bright', min: 0, max: 1, step: 0.01, def: 0.66, stage: 'draw',
+          help: 'Depth above this uses the bright shape. Tones mode only.' },
         { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
         { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0.18, stage: 'dots' },
         { key: 'sizeFalloff', label: 'Size falloff', min: 0.3, max: 3.5, step: 0.05, def: 1.35, stage: 'dots',
@@ -183,15 +187,38 @@ var CD = window.CD || {};
           customBtn.classList.add('custom-btn');
           customBtn.disabled = !CD.hasCustomShape();
           wrap.appendChild(customBtn);
+          var tonesBtn = mk('tones', 'Tones');
+          tonesBtn.classList.add('custom-btn');
+          tonesBtn.disabled = !CD.anyToneShape();
+          wrap.appendChild(tonesBtn);
           row.appendChild(wrap);
 
+          /* one shape for every dot */
           var up = el('div', 'upload-row');
           var upBtn = el('button', 'mini', 'Upload shape SVG');
-          upBtn.addEventListener('click', function () { hooks.pickShape(); });
+          upBtn.addEventListener('click', function () { hooks.pickShape(null); });
           up.appendChild(upBtn);
           var upName = el('span', 'file-name', '');
           up.appendChild(upName);
           row.appendChild(up);
+
+          /* one shape per tonal band of the depth field */
+          var toneWrap = el('div', 'tone-uploads');
+          toneWrap.appendChild(el('p', 'help', 'Or upload one shape per tone — ' +
+            'the dot primitive then changes with the depth of the surface.'));
+          var toneNames = {};
+          CD.TONE_SLOTS.forEach(function (slot) {
+            var trow = el('div', 'upload-row');
+            var tbtn = el('button', 'mini tone-slot',
+              slot.charAt(0).toUpperCase() + slot.slice(1));
+            tbtn.addEventListener('click', function () { hooks.pickShape(slot); });
+            trow.appendChild(tbtn);
+            var tname = el('span', 'file-name', 'none');
+            trow.appendChild(tname);
+            toneNames[slot] = tname;
+            toneWrap.appendChild(trow);
+          });
+          row.appendChild(toneWrap);
 
           refs[c.key] = {
             set: function (v) {
@@ -202,6 +229,10 @@ var CD = window.CD || {};
             customLoaded: function (name) {
               customBtn.disabled = false;
               upName.textContent = name;
+            },
+            toneLoaded: function (slot, name) {
+              tonesBtn.disabled = false;
+              if (toneNames[slot]) toneNames[slot].textContent = name;
             }
           };
 
