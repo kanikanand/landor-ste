@@ -96,10 +96,16 @@ var CD = window.CD || {};
       m[i] = smoothstep(t, t + soft, d[i]);
       d[i] = clamp((d[i] - t) * inv, 0, 1);
     }
-    if (p.largestRegion) mask = CD.largestRegion(mask, 0.5);
+    if (p.largestRegion) {
+      mask = CD.largestRegion(mask, 0.5);
+      mask = CD.fillEnclosed(mask, 0.5);
+    }
 
-    /* feather the mask edge slightly so contours die out instead of snapping */
-    mask.blur(1, 1);
+    /* Feather the silhouette. This is not depth smoothing — the depth field is
+     * left exactly as it is — but the boundary is traced by marching squares,
+     * and without a little softening a hard-thresholded mask hands it a
+     * stair-stepped edge to follow. */
+    mask.blur(2, 2);
 
     /* 5b. Distance from every interior point to the silhouette. Depth alone
      *     cannot express this: a point can be near the camera and still sit

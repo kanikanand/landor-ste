@@ -228,8 +228,43 @@ var CD = window.CD || {};
     return out;
   }
 
+  /* Fill background regions that do not reach the border.
+   *
+   * With no blur on the depth field, any interior shadow that dips past the
+   * threshold — an eye socket, the shade beside a nose — punches a hole in
+   * the subject, and every hole grows its own set of contours. Largest-region
+   * cannot see them: they are background, not a rival subject. Flood the
+   * background inward from the border and whatever it fails to reach is
+   * enclosed, so it belongs to the subject. */
+  function fillEnclosed(mask, iso) {
+    var w = mask.w, h = mask.h, n = w * h;
+    var seen = new Uint8Array(n);
+    var stack = new Int32Array(n);
+    var sp = 0, i, x, y;
+
+    function push(q) {
+      if (!seen[q] && mask.data[q] <= iso) { seen[q] = 1; stack[sp++] = q; }
+    }
+    for (x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
+    for (y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
+
+    while (sp > 0) {
+      var q = stack[--sp];
+      var qx = q % w, qy = (q / w) | 0;
+      if (qx > 0) push(q - 1);
+      if (qx < w - 1) push(q + 1);
+      if (qy > 0) push(q - w);
+      if (qy < h - 1) push(q + w);
+    }
+
+    var out = new Field(w, h, 1);
+    for (i = 0; i < n; i++) out.data[i] = seen[i] ? 0 : 1;
+    return out;
+  }
+
   CD.distanceInside = distanceInside;
   CD.largestRegion = largestRegion;
+  CD.fillEnclosed = fillEnclosed;
   CD.signedDistance = signedDistance;
   CD.clamp = clamp;
   CD.lerp = lerp;

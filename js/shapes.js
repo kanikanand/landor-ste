@@ -10,12 +10,9 @@
  *
  *   drawDot(ctx, x, y, size, rotation, type)
  *
- * `type` is "circle" | "square" | "diamond" | "line" | "custom", where custom
- * is any uploaded SVG, normalised into the same unit box.
- *
- * In tone mode the type is resolved per dot from the depth field instead, via
- * shapeTypeForDepth() — three uploaded SVGs covering the dark, middle and
- * bright bands of the surface.
+ * `type` names a registry entry: the built-in "ellipse", or one of the two
+ * uploaded slots. Which of the two a given dot uses is resolved per dot from
+ * its position along the line, by shapeTypeForDot().
  * ==========================================================================*/
 var CD = window.CD || {};
 
@@ -25,31 +22,15 @@ var CD = window.CD || {};
   /* Built-in primitives, each already normalised to the unit box. `spin` marks
    * shapes whose appearance actually changes with rotation — for the others the
    * rotate() can be dropped from the export to keep the file small. */
+  /* The one built-in: a plain ellipse, used by either slot until an SVG is
+   * loaded into it. Everything else is uploaded. */
   var BUILTIN = {
-    circle: {
+    ellipse: {
       d: 'M-1,0A1,1 0 1,0 1,0A1,1 0 1,0 -1,0Z',
       spin: false, round: true
-    },
-    square: {
-      d: 'M-1,-1H1V1H-1Z',
-      spin: true
-    },
-    diamond: {
-      d: 'M0,-1L1,0L0,1L-1,0Z',
-      spin: true
-    },
-    /* A capsule: strongly directional, so contour rotation reads clearly. */
-    line: {
-      d: 'M-0.68,-0.32H0.68A0.32,0.32 0 0 1 0.68,0.32H-0.68A0.32,0.32 0 0 1 -0.68,-0.32Z',
-      spin: true
     }
   };
 
-  /* A shape is a list of parts, not one merged path. Merging loses each
-   * element's own paint: a subpath meant to punch a hole with fill-rule
-   * evenodd gets filled solid under the default nonzero rule, and art defined
-   * by stroke with no fill turns into a blob. Both read as "the shape came in
-   * as a filled silhouette". */
   function Shape(def) {
     this.parts = def.parts || [{ d: def.d, stroke: false, width: 0, rule: 'nonzero' }];
     this.d = this.parts[0].d;
@@ -116,34 +97,11 @@ var CD = window.CD || {};
   });
 
   function getShape(type) {
-    return registry[type] || registry.circle;
+    return registry[type] || registry.ellipse;
   }
 
-  function setCustomShape(shape) { registry.custom = shape; }
-  function hasCustomShape() { return !!registry.custom; }
-
-  /* --------------------------------------------------------------------------
-   * Tone-mapped shapes.
-   *
-   * Three uploaded SVGs, one per tonal band of the depth field, so the dot
-   * primitive itself changes as the surface recedes: an open or fine mark in
-   * the dark, far regions, a solid one in the bright, near ones. This is the
-   * same depth value that drives size, density and colour, so all four move
-   * together and the bands never disagree about where the form is.
-   * ------------------------------------------------------------------------*/
-  var TONE_SLOTS = ['dark', 'mid', 'bright'];
-
-  /* If a slot is empty, borrow from the nearest filled neighbour rather than
-   * dropping a hole in the artwork — so one or two uploads already produce a
-   * usable result. */
-  var TONE_FALLBACK = {
-    dark: ['dark', 'mid', 'bright'],
-    mid: ['mid', 'bright', 'dark'],
-    bright: ['bright', 'mid', 'dark']
-  };
-
   /* Switch every uploaded shape between the two normalisations. Cheap — there
-   * are at most four — so it runs on each paint rather than needing its own
+   * are at most two — so it runs on each paint rather than needing its own
    * invalidation path. */
   function applyFit(mode) {
     Object.keys(registry).forEach(function (k) {
@@ -151,15 +109,13 @@ var CD = window.CD || {};
     });
   }
 
-  function toneKey(slot) { return 'tone-' + slot; }
-
   /* --------------------------------------------------------------------------
    * Node + link.
    *
-   * A different question from the tone slots. Those ask "how dark is it here";
-   * this asks "where am I along this line". One shape lands every Nth step and
-   * the other fills the run between, so a contour reads as marked points joined
+   * The two shape slots. Shape 1 lands every Nth step along the line and
+   * shape 2 fills the run between, so a contour reads as marked points joined
    * by a dotted rule rather than as an undifferentiated stream of dots.
+   * Either falls back to the built-in ellipse until an SVG is loaded.
    * ------------------------------------------------------------------------*/
   var PAIR_SLOTS = ['node', 'link'];
 
@@ -168,48 +124,15 @@ var CD = window.CD || {};
   function setPairShape(slot, shape) { registry[pairKey(slot)] = shape; }
   function hasPairShape(slot) { return !!registry[pairKey(slot)]; }
 
-  /* Both slots fall back to a plain circle, so the mode is usable before any
-   * upload: small dots with a bigger one every Nth step is already the
-   * reference figure. */
   function pairTypeFor(role) {
     var k = pairKey(role);
-    return registry[k] ? k : 'circle';
+    return registry[k] ? k : 'ellipse';
   }
 
-  function setToneShape(slot, shape) { registry[toneKey(slot)] = shape; }
-  function hasToneShape(slot) { return !!registry[toneKey(slot)]; }
-  function anyToneShape() {
-    for (var i = 0; i < TONE_SLOTS.length; i++) {
-      if (hasToneShape(TONE_SLOTS[i])) return true;
-    }
-    return false;
-  }
-
-  /* Which band a depth value falls in. The two split sliders are independent,
-   * so order them here rather than letting a crossed pair silently erase the
-   * middle band. */
-  function toneSlotForDepth(d, a, b) {
-    var lo = a < b ? a : b, hi = a < b ? b : a;
-    return d < lo ? 'dark' : (d < hi ? 'mid' : 'bright');
-  }
-
-  /* The registry key one dot should be drawn with. Role is set by the dot
-   * builder for node/link mode, where position along the line decides the
-   * shape; everything else resolves from depth. */
+  /* The registry key one dot should be drawn with: shape 1 for a node, shape 2
+   * for a link. */
   function shapeTypeForDot(p, dot) {
-    if (p.shapeType === 'nodes') return pairTypeFor(dot.role === 'node' ? 'node' : 'link');
-    return shapeTypeForDepth(p, dot.d);
-  }
-
-  /* The registry key a dot of depth `d` should be drawn with. Returns
-   * params.shapeType unchanged unless the renderer is in tone mode. */
-  function shapeTypeForDepth(p, d) {
-    if (p.shapeType !== 'tones') return p.shapeType;
-    var order = TONE_FALLBACK[toneSlotForDepth(d, p.toneSplitLow, p.toneSplitHigh)];
-    for (var i = 0; i < order.length; i++) {
-      if (hasToneShape(order[i])) return toneKey(order[i]);
-    }
-    return 'circle';
+    return pairTypeFor(dot.role === 'node' ? 'node' : 'link');
   }
 
   /* --------------------------------------------------------------------------
@@ -437,19 +360,11 @@ var CD = window.CD || {};
 
   CD.Shape = Shape;
   CD.getShape = getShape;
-  CD.setCustomShape = setCustomShape;
-  CD.hasCustomShape = hasCustomShape;
   CD.applyFit = applyFit;
-  CD.setToneShape = setToneShape;
   CD.setPairShape = setPairShape;
   CD.hasPairShape = hasPairShape;
   CD.shapeTypeForDot = shapeTypeForDot;
-  CD.PAIR_SLOTS = PAIR_SLOTS;
-  CD.hasToneShape = hasToneShape;
-  CD.anyToneShape = anyToneShape;
-  CD.shapeTypeForDepth = shapeTypeForDepth;
-  CD.TONE_SLOTS = TONE_SLOTS;
   CD.drawDot = drawDot;
   CD.shapeFromSVG = shapeFromSVG;
-  CD.SHAPE_TYPES = ['circle', 'square', 'diamond', 'line'];
+  CD.PAIR_SLOTS = PAIR_SLOTS;
 })(CD);

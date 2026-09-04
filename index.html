@@ -12,29 +12,22 @@
 <aside id="panel">
   <header class="brand">
     <h1>Contour Dots</h1>
-    <p>Depth field &rarr; flow field &rarr; streamlines &rarr; oriented dots.</p>
+    <p>Contours of an image, as dots.</p>
   </header>
 
-  <div class="io">
-    <button id="loadImage" class="primary">Load image</button>
+  <button id="loadImage" class="primary">Load image</button>
+
+  <div id="controls"></div>
+
+  <footer class="io-footer">
     <div class="io-row">
-      <button id="exportSvg">Export SVG</button>
-      <button id="exportPng">Export PNG</button>
+      <button id="exportSvg" class="primary">Download SVG</button>
+      <button id="exportPng">PNG</button>
     </div>
     <div class="io-row">
       <button id="reseed">Reseed</button>
       <button id="reset">Reset</button>
     </div>
-  </div>
-
-  <div id="controls"></div>
-
-  <footer class="foot">
-    <p><strong>Depth, not brightness.</strong> White reads as near, black as far.
-       Threshold carves the black negative space; nothing is drawn there.</p>
-    <p>Rotation of every dot is <code>atan2(flow.y, flow.x)</code>, and flow is
-       the depth gradient turned ninety degrees:
-       <code>F = (-&part;D/&part;y, &part;D/&part;x)</code>.</p>
   </footer>
 </aside>
 

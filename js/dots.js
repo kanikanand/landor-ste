@@ -2,8 +2,8 @@
  * dots.js — turning contour streamlines into oriented dots.
  *
  * Walks each line by arc length and emits a dot every `dotSpacing`
- * pixels, where the spacing, the size and the colour are all read from the
- * DEPTH field, and the rotation is read from the FLOW field:
+ * pixels, where the spacing and the size are read from the DEPTH field, and
+ * the rotation is read from the FLOW field:
  *
  *     rotation = atan2(flow.y, flow.x)
  *
@@ -183,33 +183,5 @@ var CD = window.CD || {};
     return dots;
   }
 
-  /* Depth -> colour ramp. Far end of the surface sits close to the background
-   * so the form fades out instead of ending on a hard edge. */
-  function makeRamp(farHex, nearHex) {
-    var f = hexToRgb(farHex), n = hexToRgb(nearHex);
-    return function (d, gamma) {
-      var t = Math.pow(clamp(d, 0, 1), gamma || 1);
-      return [
-        Math.round(lerp(f[0], n[0], t)),
-        Math.round(lerp(f[1], n[1], t)),
-        Math.round(lerp(f[2], n[2], t))
-      ];
-    };
-  }
-
-  function hexToRgb(hex) {
-    var h = hex.replace('#', '');
-    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-    var v = parseInt(h, 16);
-    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-  }
-
-  function rgbToHex(c) {
-    return '#' + ((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1);
-  }
-
   CD.buildDots = buildDots;
-  CD.makeRamp = makeRamp;
-  CD.hexToRgb = hexToRgb;
-  CD.rgbToHex = rgbToHex;
 })(CD);

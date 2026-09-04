@@ -25,7 +25,6 @@ var CD = window.CD || {};
     fieldW: 0, fieldH: 0, fieldScale: 1,
     dep: null, flow: null, sd: null, lines: [], dots: [],
     pendingShapeSlot: null,
-    ramp: null,
     dirty: 'depth',
     pendingFull: null,
     quality: 'full',
@@ -235,87 +234,22 @@ var CD = window.CD || {};
     });
   }
 
-  /* Paint every dot into a 2D context, batching by colour bucket: one
-   * fillStyle change per bucket instead of one per dot, which is the
-   * difference between a stutter and an instant redraw at a hundred
-   * thousand dots. */
+  /* Paint every dot. One flat colour, so there is a single fillStyle for the
+   * whole render and no bucketing to do. */
   function paintDots(c2d) {
     var p = state.params;
-    var dots = state.dots;
     CD.applyFit(p.shapeFit ? 'box' : 'ink');
-    var buckets = 32, b, i;
-    var groups = new Array(buckets);
-    for (b = 0; b < buckets; b++) groups[b] = [];
-    for (i = 0; i < dots.length; i++) {
-      b = (dots[i].d * buckets) | 0;
-      groups[b < 0 ? 0 : (b > buckets - 1 ? buckets - 1 : b)].push(dots[i]);
+    var dots = state.dots;
+    c2d.fillStyle = p.dotColor;
+    for (var i = 0; i < dots.length; i++) {
+      var d = dots[i];
+      CD.drawDot(c2d, d.x, d.y, d.s, d.r, CD.shapeTypeForDot(p, d));
     }
-    /* Tone mode resolves the primitive per dot from its depth, node/link mode
-     * from its position along the line; otherwise it is the same for every dot
-     * and the lookup is hoisted out. */
-    var perDot = p.shapeType === 'tones' || p.shapeType === 'nodes';
-    for (b = 0; b < buckets; b++) {
-      var list = groups[b];
-      if (!list.length) continue;
-      var col = state.ramp((b + 0.5) / buckets, p.colorGamma);
-      c2d.fillStyle = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
-      for (i = 0; i < list.length; i++) {
-        var d = list[i];
-        CD.drawDot(c2d, d.x, d.y, d.s, d.r,
-          perDot ? CD.shapeTypeForDot(p, d) : p.shapeType);
-      }
-    }
-  }
-
-  /* The glow is a blurred copy of the dot layer laid underneath the crisp one.
-   * It needs no depth weighting of its own: the dots are already coloured by
-   * depth, so blurring that layer blooms hardest where the surface is nearest
-   * and brightest, which is exactly where it should.
-   *
-   * Compositing is plain source-over rather than additive, so that the canvas
-   * and the SVG <filter> export agree — on a dark ground the two are visually
-   * near-identical anyway. */
-  function paintGlow() {
-    var p = state.params;
-    var density = canvasEl.width / state.viewW;
-    var off = document.createElement('canvas');
-    off.width = canvasEl.width;
-    off.height = canvasEl.height;
-    var octx = off.getContext('2d');
-    octx.scale(density, density);
-    paintDots(octx);
-
-    ctx.save();
-    ctx.globalAlpha = p.glowAmount;
-    ctx.filter = 'blur(' + p.glowRadius + 'px)';
-    ctx.drawImage(off, 0, 0, state.viewW, state.viewH);
-    ctx.restore();
-  }
-
-  function paintMask() {
-    var mask = state.dep.mask;
-    var off = document.createElement('canvas');
-    off.width = mask.w; off.height = mask.h;
-    var octx = off.getContext('2d');
-    var img = octx.createImageData(mask.w, mask.h);
-    for (var i = 0; i < mask.w * mask.h; i++) {
-      var on = mask.data[i] > 0.5;
-      img.data[i * 4] = 0;
-      img.data[i * 4 + 1] = on ? 200 : 0;
-      img.data[i * 4 + 2] = on ? 255 : 0;
-      img.data[i * 4 + 3] = on ? 90 : 0;
-    }
-    octx.putImageData(img, 0, 0);
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(off, 0, 0, state.viewW, state.viewH);
-    ctx.restore();
   }
 
   function stageDraw() {
     var p = state.params;
     if (!ctx) return;
-    state.ramp = CD.makeRamp(p.colorFar, p.colorNear);
 
     ctx.save();
     ctx.fillStyle = p.background;
@@ -326,20 +260,9 @@ var CD = window.CD || {};
      * that identifies the subject, not a replacement for it. */
     if (p.showImage && state.srcCanvas) {
       ctx.save();
-      ctx.globalAlpha = CD.clamp(p.imageOpacity, 0, 1);
       ctx.drawImage(state.srcCanvas, 0, 0, state.viewW, state.viewH);
       ctx.restore();
     }
-
-    /* Silhouette preview. The contours are offsets of the mask boundary, so
-     * when the edge lands somewhere unexpected the question is always "what
-     * does the threshold actually think the subject is" — worth being able to
-     * see rather than infer. */
-    if (p.showMask && state.dep) {
-      paintMask();
-    }
-
-    if (p.glowAmount > 0.001 && p.glowRadius > 0.001) paintGlow();
 
     ctx.save();
     paintDots(ctx);
@@ -429,29 +352,12 @@ var CD = window.CD || {};
   }
 
   function updateStats(quality) {
-    if (ui && ui.refs.shapeType && ui.refs.shapeType.toneCounts) {
-      ui.refs.shapeType.toneCounts(toneBandCounts());
-    }
     var e = $('#stats');
     if (!e) return;
     e.textContent = state.lines.length.toLocaleString() + ' contours · ' +
       state.dots.length.toLocaleString() + ' dots · ' +
       Math.round(state.timing[quality] || 0) + ' ms' +
       (quality === 'draft' ? ' (preview)' : '');
-  }
-
-  /* How many dots each tonal band actually claims. Null outside tone mode. */
-  function toneBandCounts() {
-    var p = state.params;
-    if (p.shapeType !== 'tones') return null;
-    var counts = { dark: 0, mid: 0, bright: 0 };
-    var lo = Math.min(p.toneSplitLow, p.toneSplitHigh);
-    var hi = Math.max(p.toneSplitLow, p.toneSplitHigh);
-    for (var i = 0; i < state.dots.length; i++) {
-      var d = state.dots[i].d;
-      counts[d < lo ? 'dark' : (d < hi ? 'mid' : 'bright')]++;
-    }
-    return counts;
   }
 
   /* The source photograph as a data URI, so an exported SVG is self-contained
@@ -477,17 +383,11 @@ var CD = window.CD || {};
       width: state.viewW, height: state.viewH,
       background: p.background,
       dots: state.dots,
-      shapeType: p.shapeType,
-      ramp: CD.makeRamp(p.colorFar, p.colorNear),
-      colorGamma: p.colorGamma,
-      glowAmount: p.glowAmount,
-      glowRadius: p.glowRadius,
-      toneSplitLow: p.toneSplitLow,
-      toneSplitHigh: p.toneSplitHigh,
-      nodeEvery: p.nodeEvery,
-      nodeScale: p.nodeScale,
-      image: (p.showImage && p.embedImage && state.srcCanvas) ? imageDataURL() : null,
-      imageOpacity: p.imageOpacity,
+      color: p.dotColor,
+      params: p,
+      /* Whatever is on the canvas is what gets written: with the image hidden
+       * there is nothing to embed. */
+      image: (p.showImage && state.srcCanvas) ? imageDataURL() : null,
       title: state.srcName + ' — contour dots'
     });
     CD.download(state.srcName + '-contour-dots.svg', svg);
@@ -520,7 +420,10 @@ var CD = window.CD || {};
 
     shapeInput.addEventListener('change', function () {
       var f = shapeInput.files[0];
-      var slot = state.pendingShapeSlot;
+      /* A drop carries no slot, so it fills the first empty one — shape 1
+       * before shape 2 — and otherwise replaces shape 1. */
+      var slot = state.pendingShapeSlot ||
+        (CD.hasPairShape('node') && !CD.hasPairShape('link') ? 'link' : 'node');
       state.pendingShapeSlot = null;
       shapeInput.value = '';
       if (!f) return;
@@ -528,26 +431,10 @@ var CD = window.CD || {};
       fr.onload = function () {
         try {
           var shape = CD.shapeFromSVG(fr.result, f.name);
-          if (slot && CD.PAIR_SLOTS.indexOf(slot) >= 0) {
-            CD.setPairShape(slot, shape);
-            state.params.shapeType = 'nodes';
-            if (ui.refs.shapeType.pairLoaded) ui.refs.shapeType.pairLoaded(slot, f.name);
-            ui.refs.shapeType.set('nodes');
-            status(slot + ' shape set from ' + f.name);
-          } else if (slot) {
-            CD.setToneShape(slot, shape);
-            state.params.shapeType = 'tones';
-            if (ui.refs.shapeType.toneLoaded) ui.refs.shapeType.toneLoaded(slot, f.name);
-            ui.refs.shapeType.set('tones');
-            status(slot + ' tone shape set from ' + f.name);
-          } else {
-            CD.setCustomShape(shape);
-            state.params.shapeType = 'custom';
-            if (ui.refs.shapeType.customLoaded) ui.refs.shapeType.customLoaded(f.name);
-            ui.refs.shapeType.set('custom');
-            status('Dot shape set from ' + f.name);
-          }
+          CD.setPairShape(slot, shape);
+          if (ui.refs.__shapes.loaded) ui.refs.__shapes.loaded(slot, f.name);
           markDirty('draw');
+          status('Shape ' + (slot === 'node' ? '1' : '2') + ' set from ' + f.name);
         } catch (e) {
           status(e.message, true);
         }
@@ -594,8 +481,8 @@ var CD = window.CD || {};
       var f = e.dataTransfer.files[0];
       if (!f) return;
       if (/svg/.test(f.type) || /\.svg$/i.test(f.name)) {
-        /* A dropped SVG always sets the single Custom shape; the three tone
-         * slots are explicit, so a stale pick cannot capture it. */
+        /* Clear any slot a cancelled picker left pending, so a drop cannot be
+         * captured by it. */
         state.pendingShapeSlot = null;
         var dt = new DataTransfer();
         dt.items.add(f);

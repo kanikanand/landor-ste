@@ -6,12 +6,8 @@
  * in Illustrator or Figma each dot is still a real object, and swapping the
  * single definition in <defs> restyles every dot at once.
  *
- * Circles take a shorter path — a plain <circle>, which is both smaller and
- * friendlier to downstream tools.
- *
- * When the glow is on, the dot layer is emitted into <defs> once and drawn
- * twice with <use>: a blurred copy underneath, the crisp one on top. Emitting
- * the dots twice would double the file for no reason.
+ * The built-in ellipse takes a shorter path — a plain <circle>, which is both
+ * smaller and friendlier to downstream tools.
  * ==========================================================================*/
 var CD = window.CD || {};
 
@@ -36,15 +32,10 @@ var CD = window.CD || {};
     for (var i = 0; i < src.length; i++) dst.push(src[i]);
   }
 
-  /* opts: {width, height, background, dots, shapeType, ramp, colorGamma,
-   *        glowAmount, glowRadius, toneSplitLow, toneSplitHigh, image,
-   *        imageOpacity, title, buckets} */
+  /* opts: {width, height, background, dots, color, params, image, title} */
   function buildSVG(opts) {
     var w = opts.width, h = opts.height;
     var dots = opts.dots;
-    var ramp = opts.ramp;
-    var gamma = opts.colorGamma;
-    var buckets = opts.buckets || 24;
 
     var out = [];
     out.push('<?xml version="1.0" encoding="UTF-8"?>');
@@ -56,17 +47,12 @@ var CD = window.CD || {};
       /* The photograph, embedded so the file stands alone, underneath the
        * dots exactly as on the canvas. */
       out.push('<image x="0" y="0" width="' + w + '" height="' + h + '"' +
-        (opts.imageOpacity < 1 ? ' opacity="' + num(opts.imageOpacity, 3) + '"' : '') +
         ' preserveAspectRatio="none"' +
         ' xlink:href="' + opts.image + '" href="' + opts.image + '"/>');
     }
 
-    var glow = opts.glowAmount > 0.001 && opts.glowRadius > 0.001;
-    var perDot = opts.shapeType === 'tones' || opts.shapeType === 'nodes';
-
-    /* Shapes are emitted into <defs> on demand: in tone mode a render can use
-     * several different primitives, and only the ones actually placed should
-     * end up in the file. */
+    /* Shapes are emitted into <defs> on demand as dots reference them, so a
+     * render carries exactly the definitions it uses and nothing more. */
     var defs = [];
     var used = {};
 
@@ -76,8 +62,7 @@ var CD = window.CD || {};
         var id = 'dot-' + type;
         var nt = sh.normTransform();
         /* Each part keeps its own paint. Stroked parts take their colour from
-         * `currentColor`, which the enclosing colour group sets alongside
-         * fill, so one group still drives every dot in a bucket. */
+         * `currentColor`, which the enclosing group sets alongside fill. */
         var inner = sh.parts.map(function (part) {
           if (part.stroke) {
             return '<path d="' + part.d + '" fill="none" stroke="currentColor" ' +
@@ -93,77 +78,35 @@ var CD = window.CD || {};
       return used[type];
     }
 
-    /* Group dots into a small number of colour buckets so the file is a
-     * handful of <g fill> groups rather than one fill attribute per dot. */
+    /* One flat colour, so the whole render is a single group. */
     var body = [];
-    var groups = [];
-    var i;
-    for (i = 0; i < buckets; i++) groups.push([]);
-    for (i = 0; i < dots.length; i++) {
-      var bi = Math.min(buckets - 1, Math.max(0, Math.floor(dots[i].d * buckets)));
-      groups[bi].push(dots[i]);
-    }
+    body.push('<g fill="' + opts.color + '" color="' + opts.color + '">');
+    for (var i = 0; i < dots.length; i++) {
+      var dt = dots[i];
+      var type = CD.shapeTypeForDot(opts.params, dt);
+      var sh = CD.getShape(type);
 
-    for (var g = 0; g < buckets; g++) {
-      var list = groups[g];
-      if (!list.length) continue;
-      var mid = (g + 0.5) / buckets;
-      var col = CD.rgbToHex(ramp(mid, gamma));
-      body.push('<g fill="' + col + '" color="' + col + '">');
-      for (i = 0; i < list.length; i++) {
-        var dt = list[i];
-        var type = perDot ? CD.shapeTypeForDot(opts, dt) : opts.shapeType;
-        var sh = CD.getShape(type);
-
-        if (sh.round && !sh.custom) {
-          /* a circle is shorter and more portable as a real <circle> */
-          body.push('<circle cx="' + num(dt.x) + '" cy="' + num(dt.y) +
-                    '" r="' + num(dt.s, 3) + '"/>');
-        } else {
-          var id = defIdFor(type);
-          var t = 'translate(' + num(dt.x) + ' ' + num(dt.y) + ')';
-          if (sh.spin) {
-            var deg = dt.r * DEG;
-            /* squares and diamonds repeat every 90 degrees; folding the angle
-             * into a short range keeps the numbers small */
-            if (type === 'square' || type === 'diamond') {
-              deg = ((deg % 90) + 90) % 90;
-            }
-            t += ' rotate(' + num(deg, 1) + ')';
-          }
-          t += ' scale(' + num(dt.s, 3) + ')';
-          body.push('<use xlink:href="#' + id + '" href="#' + id +
-                    '" transform="' + t + '"/>');
-        }
+      if (sh.round && !sh.custom) {
+        /* an ellipse is shorter and more portable as a real <circle> */
+        body.push('<circle cx="' + num(dt.x) + '" cy="' + num(dt.y) +
+                  '" r="' + num(dt.s, 3) + '"/>');
+      } else {
+        var id = defIdFor(type);
+        var t = 'translate(' + num(dt.x) + ' ' + num(dt.y) + ')';
+        if (sh.spin) t += ' rotate(' + num(dt.r * DEG, 1) + ')';
+        t += ' scale(' + num(dt.s, 3) + ')';
+        body.push('<use xlink:href="#' + id + '" href="#' + id +
+                  '" transform="' + t + '"/>');
       }
-      body.push('</g>');
     }
+    body.push('</g>');
 
-    if (glow) {
-      /* userSpaceOnUse with an explicit margin: the default bounding-box
-       * filter region would clip a blur this wide at the edges of the art. */
-      var pad = Math.ceil(opts.glowRadius * 3);
-      defs.push('<filter id="glow" filterUnits="userSpaceOnUse" ' +
-        'x="' + (-pad) + '" y="' + (-pad) + '" ' +
-        'width="' + (w + pad * 2) + '" height="' + (h + pad * 2) + '">' +
-        '<feGaussianBlur stdDeviation="' + num(opts.glowRadius / 2, 2) + '"/>' +
-        '</filter>');
-      defs.push('<g id="dots">');
-      pushAll(defs, body);
-      defs.push('</g>');
-    }
     if (defs.length) {
       out.push('<defs>');
       pushAll(out, defs);
       out.push('</defs>');
     }
-    if (glow) {
-      out.push('<use xlink:href="#dots" href="#dots" filter="url(#glow)" ' +
-               'opacity="' + num(opts.glowAmount, 3) + '"/>');
-      out.push('<use xlink:href="#dots" href="#dots"/>');
-    } else {
-      pushAll(out, body);
-    }
+    pushAll(out, body);
 
     out.push('</svg>');
     return out.join('\n');
