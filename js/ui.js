@@ -58,7 +58,9 @@ var CD = window.CD || {};
       controls: [
         { key: 'depthExaggeration', label: 'Exaggeration', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots',
           help: 'Displaces each dot along the depth gradient. This is the relief.' },
-        { key: 'depthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth' }
+        { key: 'depthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth' },
+        { key: 'depthSmoothing', label: 'Depth smoothing', min: 0, max: 30, step: 1, def: 9, stage: 'depth', wide: true,
+          help: 'Smooths the depth field before its gradient is taken, so the contours describe the form rather than the grain. This is what makes the flow read as 3D.' }
       ]
     },
     {
@@ -121,7 +123,6 @@ var CD = window.CD || {};
     flowNoiseScale: 1,
     seed: 12345,
 
-    depthSmoothing: 0,      // no blur on the depth field
     flowStrength: 1,        // pure depth contours
     flowAngle: 0,           // inert once flow strength is 1
     sizeFalloff: 1,

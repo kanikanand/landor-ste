@@ -154,7 +154,7 @@ shared artboard, set **Node scale** to 1, or the difference is counted twice.
 Subject matte, Matte cut, Invert matte.
 
 **Depth** — Exaggeration (displaces each dot along the depth gradient), Depth
-contrast. Both do real work in either renderer: depth contrast feeds the
+contrast, Depth smoothing. Both do real work in either renderer: depth contrast feeds the
 threshold that defines the silhouette, and the exaggeration displaces dots
 wherever they were placed.
 
@@ -176,7 +176,6 @@ These were controls in earlier branches and are pinned here:
 
 | | |
 |---|---|
-| Depth smoothing | 0 — **Flow coherence** does this job instead |
 | Flow strength | 1 — pure depth contours |
 | Randomness, Edge falloff | 0 |
 | Image opacity | 1 |
@@ -186,19 +185,41 @@ These were controls in earlier branches and are pinned here:
 Glow, the colour ramp, the three-band tone shapes, the single Custom slot and
 the built-in square/diamond/line primitives are gone entirely.
 
-**Depth smoothing at 0 has a consequence worth knowing.** It exists to make the
-depth field continuous, and without it a noisy photograph gives a ragged
-silhouette. Two things carry the load instead: **Largest region** keeps a
-single subject *and* fills background regions that do not reach the border —
-without that, any interior shadow dipping past the threshold punches a hole and
-every hole grows its own contours. The silhouette is also feathered before it
-is traced, which is not depth smoothing (the depth field is untouched) but
-stops marching squares following a stair-stepped edge. In Surface mode, **Flow
-coherence** is now the only smoothing in the pipeline, so it wants to be high:
-measured on a portrait, raising it from 6 to 22 took the mean turn per step of
-a streamline from 2.29 degrees to 0.64 — the difference between fingerprint
-swirls in a flat wall and the long flowing bands of a halftone. It defaults
-to 14.
+## Depth smoothing and the 3D read
+
+![contours following the form](docs/depth-flow.png)
+
+This is the control that makes the flow describe a form rather than a texture,
+and it is worth being precise about why, because smoothness and form-following
+are not the same property and only one of them is the point.
+
+Depth smoothing blurs the **depth field itself, before its gradient is taken**,
+so the gradient describes the large shapes — a brow, a cheek, the turn of a jaw
+— instead of the grain. Flow coherence smooths the **direction field after the
+fact**: it removes noise from directions that were already computed from a
+noisy gradient, which makes the lines tidier without making them follow
+anything.
+
+Measured on a shaded head, as the alignment between a streamline's tangent and
+the iso-depth direction of the form — 1.0 is following the form perfectly,
+0.637 is no relationship at all:
+
+| | coherence 6 | coherence 14 |
+|---|---|---|
+| **smoothing 0** | 0.772 | 0.794 |
+| **smoothing 4** | 0.828 | 0.875 |
+| **smoothing 9** | 0.882 | **0.937** |
+| **smoothing 16** | 0.938 | **0.966** |
+| **smoothing 24** | 0.971 | 0.966 |
+
+Coherence alone plateaus around 0.83 however high it goes. Smoothing carries it
+to 0.97. They are complementary — coherence still fills flat regions and keeps
+lines continuous — but if the contours are not reading as 3D, depth smoothing
+is the control, and it defaults to 9.
+
+Two things still carry the silhouette regardless of it: **Largest region** keeps
+one subject and fills enclosed holes, and the mask is feathered before it is
+traced so marching squares does not follow a stair-stepped edge.
 
 ## Export
 
@@ -233,9 +254,9 @@ at its edges.
 - A single global threshold has a hard limit: on a strongly graded background
   it cannot separate subject from background at any setting, because some of
   the background genuinely is darker than some of the subject.
-- For a full-bleed halftone: Surface, **Surface fills frame** on, **Size by
-  tone** near 1, **Flow coherence** high, and the tone window set to cut the
-  shadows to black.
+- For the depth-flow 3D look: Surface, **Surface fills frame** on, **Depth
+  smoothing** around 10, **Size by tone** near 0.75, tight **Line spacing** and
+  **Dot spacing**, and the tone window set to cut the shadows to black.
 - Keep **Line spacing** above the node diameter (`Dot size x Node scale x 2`),
   or adjacent bands collide.
 
