@@ -41,7 +41,7 @@ var CD = window.CD || {};
    *           mask:  Field(1ch, 0..1 negative-space coverage),
    *           grad:  Field(2ch, dD/dx dD/dy) }
    */
-  function buildDepth(px, w, h, p) {
+  function buildDepth(px, w, h, p, mattePx) {
     var i, x, y, n = w * h;
     var depth = new CD.Field(w, h, 1);
     var d = depth.data;
@@ -95,6 +95,29 @@ var CD = window.CD || {};
     for (i = 0; i < n; i++) {
       m[i] = smoothstep(t, t + soft, d[i]);
       d[i] = clamp((d[i] - t) * inv, 0, 1);
+    }
+
+    /* A supplied matte replaces the threshold as the definition of "subject".
+     *
+     * A global luminance threshold selects a band of brightness, not an
+     * object. On a portrait the subject spans the whole range — dark hair,
+     * lit face, dark shirt — while the background sits in the middle of it,
+     * so no threshold encloses the person: measured on such an image, every
+     * setting from 0.15 to 0.5 selected the lit face and excluded the hair,
+     * the shirt and the wall alike. Where the separation actually matters,
+     * the answer is to say where the subject is rather than to infer it. */
+    if (mattePx) {
+      var mt = clamp(p.matteThreshold, 0, 1);
+      for (i = 0; i < n; i++) {
+        /* alpha if the matte carries one, luminance otherwise */
+        var a = mattePx[i * 4 + 3] / 255;
+        var v = a < 0.999
+          ? a
+          : (0.2126 * mattePx[i * 4] + 0.7152 * mattePx[i * 4 + 1] +
+             0.0722 * mattePx[i * 4 + 2]) / 255;
+        if (p.matteInvert) v = 1 - v;
+        m[i] = smoothstep(mt, mt + soft, v);
+      }
     }
     if (p.largestRegion) {
       mask = CD.largestRegion(mask, 0.5);

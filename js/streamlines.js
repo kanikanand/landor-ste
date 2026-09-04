@@ -67,6 +67,7 @@ var CD = window.CD || {};
     this.s = ctx.fieldScale;      // view px -> field px
     this.p = ctx.params;
     this.rng = ctx.rng;
+    this.fillFrame = !!ctx.fillFrame;
 
     var p = this.p;
     this.sepBase = Math.max(1.2, p.lineSpacing / Math.max(0.05, p.lineDensity));
@@ -93,8 +94,11 @@ var CD = window.CD || {};
   };
 
   Tracer.prototype.inside = function (x, y) {
-    return x >= 0 && y >= 0 && x < this.w && y < this.h &&
-           this.maskAt(x, y) > 0.5;
+    if (x < 0 || y < 0 || x >= this.w || y >= this.h) return false;
+    /* The silhouette is the edge renderer's business. The surface layer can
+     * either respect it or run across the whole frame, with the tone window
+     * carving the negative space instead. */
+    return this.fillFrame ? true : this.maskAt(x, y) > 0.5;
   };
 
   Tracer.prototype.dir = function (x, y) {

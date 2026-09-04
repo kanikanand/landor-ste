@@ -25,6 +25,7 @@ var CD = window.CD || {};
     fieldW: 0, fieldH: 0, fieldScale: 1,
     dep: null, flow: null, sd: null, lines: [], dots: [],
     pendingShapeSlot: null,
+    matteCanvas: null,
     dirty: 'depth',
     pendingFull: null,
     quality: 'full',
@@ -173,47 +174,67 @@ var CD = window.CD || {};
     g.imageSmoothingQuality = 'high';
     g.drawImage(state.srcCanvas, 0, 0, fw, fh);
     var px = g.getImageData(0, 0, fw, fh).data;
-    state.dep = CD.buildDepth(px, fw, fh, p);
+
+    var mattePx = null;
+    if (state.matteCanvas) {
+      var mc = document.createElement('canvas');
+      mc.width = fw; mc.height = fh;
+      var mg = mc.getContext('2d');
+      mg.clearRect(0, 0, fw, fh);
+      mg.drawImage(state.matteCanvas, 0, 0, fw, fh);
+      mattePx = mg.getImageData(0, 0, fw, fh).data;
+    }
+    state.dep = CD.buildDepth(px, fw, fh, p, mattePx);
   }
 
   function stageFlow(p) {
     /* Edge mode takes its direction from the extracted contour's own tangent,
      * so there is no field to build. */
     if (p.renderMode === 'edge') { state.flow = null; return; }
+
     state.flow = CD.buildFlow(state.dep, p, function (x, y) {
       return (typeof noise === 'function') ? noise(x, y) : 0.5;
     });
   }
 
   function stageLines(p) {
-    if (p.renderMode === 'edge') {
+    var lines = [];
+
+    if (p.renderMode !== 'surface') {
       var built = CD.buildEdgeLines({
         dep: state.dep,
         params: p,
         fieldScale: state.fieldScale
       });
-      state.lines = built.lines;
       state.sd = built.sd;
-      return;
+      for (var i = 0; i < built.lines.length; i++) {
+        built.lines[i].kind = 'edge';
+        lines.push(built.lines[i]);
+      }
     }
 
-    var tracer = new CD.Tracer({
-      flow: state.flow,
-      depth: state.dep.depth,
-      mask: state.dep.mask,
-      viewW: state.viewW, viewH: state.viewH,
-      fieldScale: state.fieldScale,
-      params: p,
-      rng: CD.makeRng(p.seed)
-    });
-    /* The tracer yields bare polylines; the dot builder takes banded lines. */
-    state.lines = tracer.run().map(function (pts) {
-      return { pts: pts, band: 0 };
-    });
+    if (p.renderMode !== 'edge') {
+      var tracer = new CD.Tracer({
+        flow: state.flow,
+        depth: state.dep.depth,
+        mask: state.dep.mask,
+        viewW: state.viewW, viewH: state.viewH,
+        fieldScale: state.fieldScale,
+        params: p,
+        rng: CD.makeRng(p.seed),
+        fillFrame: p.surfaceFillFrame
+      });
+      /* The tracer yields bare polylines; the dot builder takes tagged ones. */
+      var traced = tracer.run();
+      for (var j = 0; j < traced.length; j++) {
+        lines.push({ pts: traced[j], band: 0, kind: 'surface' });
+      }
+    }
+
+    state.lines = lines;
   }
 
   function stageDots(p) {
-    var edgeMode = p.renderMode === 'edge';
     state.dots = CD.buildDots({
       lines: state.lines,
       depth: state.dep.depth,
@@ -224,13 +245,12 @@ var CD = window.CD || {};
       fieldScale: state.fieldScale,
       params: p,
       rng: CD.makeRng(p.seed ^ 0x9e3779b9),
-      /* Edge mode reads the picture's tonality rather than its depth: that is
-       * what gates the bands, tints the dots and picks the tone shapes. Dots
-       * are also evenly spaced along each contour — the density in the darks
-       * comes from stacking more bands, not from crowding one. */
-      valueField: edgeMode ? state.dep.tone : state.dep.depth,
-      uniformSpacing: edgeMode,
-      bandLimit: edgeMode ? CD.makeBandLimit(state.dep.tone, p) : null
+      /* Both the size ramp and the coverage window read the picture's own
+       * tonality, so a dot means the same thing whichever kind of line it
+       * was placed on. */
+      valueField: state.dep.tone,
+      toneField: state.dep.tone,
+      bandLimit: CD.makeBandLimit(state.dep.tone, p)
     });
   }
 
@@ -443,6 +463,40 @@ var CD = window.CD || {};
       fr.readAsText(f);
     });
 
+    var matteInput = $('#matteInput');
+    matteInput.addEventListener('change', function () {
+      var f = matteInput.files[0];
+      matteInput.value = '';
+      if (!f) return;
+      if (!/^image\//.test(f.type)) { status('The matte must be an image.', true); return; }
+      var url = URL.createObjectURL(f);
+      var img = new Image();
+      img.onload = function () {
+        var c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        state.matteCanvas = c;
+        if (ui.refs.__matte) ui.refs.__matte.loaded(f.name);
+        ui.syncVisibility();
+        markDirty('depth');
+        status('Matte set from ' + f.name);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        status('Could not decode that matte.', true);
+      };
+      img.src = url;
+    });
+
+    $('#clearMatte') && $('#clearMatte').addEventListener('click', function () {
+      state.matteCanvas = null;
+      if (ui.refs.__matte) ui.refs.__matte.loaded('none');
+      ui.syncVisibility();
+      markDirty('depth');
+      status('Matte cleared — back to the luminance threshold');
+    });
+
     $('#exportSvg').addEventListener('click', exportSVG);
     $('#exportPng').addEventListener('click', exportPNG);
 
@@ -518,10 +572,20 @@ var CD = window.CD || {};
         if (ui) ui.syncVisibility();
         markDirty(stage);
       },
-      { pickShape: function (slot) {
+      {
+        pickShape: function (slot) {
           state.pendingShapeSlot = slot || null;
           document.getElementById('shapeInput').click();
-        } });
+        },
+        pickMatte: function () { document.getElementById('matteInput').click(); },
+        clearMatte: function () {
+          state.matteCanvas = null;
+          if (ui.refs.__matte) ui.refs.__matte.loaded('none');
+          ui.syncVisibility();
+          markDirty('depth');
+          status('Matte cleared \u2014 back to the luminance threshold');
+        }
+      });
 
     wireChrome();
     setSource(makeSampleImage(), 'sample');

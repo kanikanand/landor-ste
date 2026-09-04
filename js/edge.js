@@ -31,9 +31,16 @@ var CD = window.CD || {};
      * blur and contrast, which almost nothing is — so at two lines the second
      * one never showed at all. Scaling by n leaves headroom, so every band is
      * reachable within the tones a real photograph actually contains. */
+    /* Shading is now how much tonality *thins* the stack, not whether there is
+     * one. At 0 every band is drawn everywhere, so the contours are pure
+     * geometric offsets of the silhouette — object against background, with no
+     * tonal opinion. At 1 the darks keep the full stack and the lights fall
+     * back to the outline alone. How many contours there are is Number of
+     * lines; this only says how much the picture gets to take away. */
     return function (fx, fy) {
       var darkness = 1 - clamp(tone.sample(fx, fy, 0), 0, 1);
-      return 1 + n * amount * Math.pow(darkness, falloff);
+      var keep = 1 - amount + amount * Math.pow(darkness, falloff);
+      return 1 + n * keep;
     };
   }
 

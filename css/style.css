@@ -99,14 +99,28 @@ button.primary:hover { background: #ff3a48; border-color: #ff3a48; }
 
 .group { border-top: 1px solid var(--line); padding: 7px 0 1px; }
 .group:first-child { border-top: 0; padding-top: 0; }
-.group h2 {
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
   margin: 0 0 6px;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
   font-size: 9.5px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--accent);
   font-weight: 600;
+  text-align: left;
+  cursor: pointer;
 }
+.group-head:hover:not(:disabled) { background: none; color: #ff5f6b; }
+.caret { display: inline-block; transition: transform .12s; font-size: 9px; }
+.group.collapsed .caret { transform: rotate(-90deg); }
+.group.collapsed .grid { display: none; }
 
 .grid {
   display: grid;
@@ -169,9 +183,12 @@ input[type=range]:hover::-moz-range-thumb { background: var(--accent); }
 
 /* --------------------------------------------------------------- shapes -- */
 
-.upload-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+.upload-row { display: flex; align-items: center; gap: 6px; }
+.slot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.slot-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.slot-cell .file-name { font-size: 10px; }
 .mini { padding: 5px 8px; font-size: 11px; }
-.shape-slot { flex: 0 0 auto; min-width: 108px; text-align: center; }
+.shape-slot { text-align: center; }
 .file-name {
   font-size: 10.5px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;

@@ -34,9 +34,17 @@ var CD = window.CD || {};
     var nodeEvery = Math.max(2, Math.round(p.nodeEvery));
     var nodeScale = Math.max(0.1, p.nodeScale);
 
-    var bandLimit = ctx.bandLimit || null;   // edge mode: tone gates the bands
+    var bandLimit = ctx.bandLimit || null;   // edge lines: tone gates the bands
     var valueField = ctx.valueField || depth; // what `d` means for this mode
-    var uniformSpacing = !!ctx.uniformSpacing;
+    var toneField = ctx.toneField || depth;   // the picture's own tonality
+
+    /* Coverage window on tonality: dots exist only where the picture falls
+     * inside it. This is what puts marks on the hair and the shirt and
+     * nowhere else, without touching the geometry that produced the lines. */
+    var toneLo = Math.min(p.toneMin, p.toneMax);
+    var toneHi = Math.max(p.toneMin, p.toneMax);
+    var windowed = toneLo > 0.001 || toneHi < 0.999;
+    var fillFrame = !!p.surfaceFillFrame;
 
     var dots = [];
     var jitter = p.randomness;
@@ -52,6 +60,11 @@ var CD = window.CD || {};
       var pts = line.pts;
       var band = line.band || 0;
       if (!pts || pts.length < 4) continue;
+      /* Edge lines are evenly spaced along the contour and gated by band;
+       * surface streamlines take their spacing from tone and are gated by the
+       * silhouette. Both kinds can be present in the same render. */
+      var isEdge = line.kind === 'edge';
+      var uniformSpacing = isEdge;
 
       /* Normally each line starts on a random phase so the dots do not comb
        * into rows. In node/link mode the phase is the rhythm, so every line
@@ -80,13 +93,13 @@ var CD = window.CD || {};
           var m = mask.sample(fx, fy, 0);
           var d = valueField.sample(fx, fy, 0);
 
-          /* Size: the tone ramp is optional. An overlay that identifies a
-           * subject wants an even mark — the reference sets read as a single
-           * repeated dot — whereas the surface renderer wants dots that shrink
-           * as the form recedes. `sizeByTone` is how much of that ramp to
-           * apply. */
-          var toneScale = lerp(1, lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff)),
-                               clamp(p.sizeByTone, 0, 1));
+          /* Size against tone. Positive grows the dot towards the lights,
+           * which is the halftone reading — big in the highlights, vanishing
+           * in the shadows. Negative grows it towards the darks. At 0 the mark
+           * is even, which is what an outline overlay wants. */
+          var amt = clamp(p.sizeByTone, -1, 1);
+          var ramp = amt >= 0 ? d : 1 - d;
+          var toneScale = lerp(1, lerp(0.16, 1.0, ramp), Math.abs(amt));
           var base = p.dotSize * toneScale;
           var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
           var size = base * vary;
@@ -111,7 +124,13 @@ var CD = window.CD || {};
           localSpacing = Math.max(size * 2.15, localSpacing);
 
           var role = null;
-          if (pairMode) {
+          if (pairMode && p.shapeBy === 'tone') {
+            /* Shape 1 takes the darks, shape 2 the lights. No rhythm: which
+             * mark you get is a property of the picture at that point. */
+            var sv = toneField.sample(fx, fy, 0);
+            if (sv < p.shapeSplit) { role = 'node'; size *= nodeScale; }
+            else { role = 'link'; }
+          } else if (pairMode) {
             if (idx % nodeEvery === 0) {
               role = 'node';
               size *= nodeScale;
@@ -131,7 +150,14 @@ var CD = window.CD || {};
           /* In edge mode the contours deliberately run out into the
            * background, so the silhouette mask must not cull them; the tone
            * gate below decides what survives instead. */
-          var alive = bandLimit ? (band + 1 <= bandLimit(fx, fy)) : (m > 0.5);
+          var alive = (isEdge && bandLimit)
+            ? (band + 1 <= bandLimit(fx, fy))
+            : (fillFrame || m > 0.5);
+
+          if (alive && windowed) {
+            var tv = toneField.sample(fx, fy, 0);
+            if (tv < toneLo || tv > toneHi) alive = false;
+          }
 
           if (alive && size > 0.16) {
             /* Rotation follows the contour. With a flow field that is the

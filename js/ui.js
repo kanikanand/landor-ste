@@ -18,7 +18,8 @@ var CD = window.CD || {};
 
   var MODES = [
     { key: 'edge', label: 'Edge' },
-    { key: 'surface', label: 'Surface' }
+    { key: 'surface', label: 'Surface' },
+    { key: 'both', label: 'Both' }
   ];
 
   /* `wide` spans both columns. `inline` toggles are gathered into one row. */
@@ -40,7 +41,13 @@ var CD = window.CD || {};
         { key: 'largestRegion', label: 'Largest region', type: 'toggle', def: true, stage: 'depth', inline: true,
           help: 'Keeps one subject, so a stray background patch cannot grow its own silhouette.' },
         { key: 'showImage', label: 'Show image', type: 'toggle', def: true, stage: 'draw', inline: true,
-          help: 'Draws the photograph under the dots, and embeds it in the SVG export.' }
+          help: 'Draws the photograph under the dots, and embeds it in the SVG export.' },
+        { key: '__matte', label: 'Subject matte', type: 'matte', stage: 'depth', wide: true,
+          help: 'A cut-out or black-and-white matte. Overrides the threshold, which selects a band of brightness rather than an object.' },
+        { key: 'matteThreshold', label: 'Matte cut', min: 0, max: 1, step: 0.01, def: 0.5, stage: 'depth',
+          when: function () { return CD.state && !!CD.state.matteCanvas; } },
+        { key: 'matteInvert', label: 'Invert matte', type: 'toggle', def: false, stage: 'depth',
+          when: function () { return CD.state && !!CD.state.matteCanvas; } }
       ]
     },
     {
@@ -57,17 +64,22 @@ var CD = window.CD || {};
     {
       group: 'Contours',
       controls: [
-        { key: 'lineCount', label: 'Number of lines', min: 1, max: 14, step: 1, def: 6, stage: 'lines', modes: ['edge'] },
+        { key: 'lineCount', label: 'Number of lines', min: 1, max: 14, step: 1, def: 6, stage: 'lines', modes: ['edge', 'both'] },
         { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 14, stage: 'lines' },
-        { key: 'shading', label: 'Shading', min: 0, max: 1, step: 0.01, def: 1, stage: 'dots', modes: ['edge'],
-          help: 'How much the darks earn extra contours. At 0 every region keeps a single line.' },
-        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'dots', modes: ['edge'],
+        { key: 'shading', label: 'Shading', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots', modes: ['edge', 'both'],
+          help: 'How much tonality thins the stack. At 0 every band is drawn everywhere — pure geometric offsets of the silhouette.' },
+        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'dots', modes: ['edge', 'both'],
+          when: function (p) { return p.shading > 0.001; },
           help: 'Higher confines the shading to the deepest darks.' },
-        { key: 'lineSpread', label: 'Spread', type: 'spread', def: 'both', stage: 'lines', modes: ['edge'], wide: true,
+        { key: 'lineSpread', label: 'Spread', type: 'spread', def: 'both', stage: 'lines', modes: ['edge', 'both'], wide: true,
+          when: function (p) { return p.lineCount > 1; },
           help: 'Which side of the edge the extra contours step towards.' },
-        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines', modes: ['surface'] },
-        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow', modes: ['surface'] },
-        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow', modes: ['surface'],
+        { key: 'surfaceFillFrame', label: 'Surface fills frame', type: 'toggle', def: false, stage: 'lines',
+          modes: ['surface', 'both'], inline: true,
+          help: 'Runs the surface streamlines across the whole picture instead of stopping at the silhouette. Use the tone window to carve the negative space.' },
+        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines', modes: ['surface', 'both'] },
+        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow', modes: ['surface', 'both'] },
+        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 14, stage: 'flow', modes: ['surface', 'both'],
           help: 'Diffuses direction into flat regions so lines stay continuous.' }
       ]
     },
@@ -75,12 +87,23 @@ var CD = window.CD || {};
       group: 'Dots',
       controls: [
         { key: '__shapes', label: 'Shapes', type: 'shapes', stage: 'draw', wide: true },
+        { key: 'shapeBy', label: 'Shape by', type: 'shapeby', def: 'rhythm', stage: 'dots', wide: true,
+          help: 'Rhythm: shape 1 every Nth step. Tone: shape 1 in the darks, shape 2 in the lights.' },
+        { key: 'shapeSplit', label: 'Shape split', min: 0, max: 1, step: 0.01, def: 0.35, stage: 'dots',
+          when: function (p) { return p.shapeBy === 'tone'; },
+          help: 'Tonality below this gets shape 1, above it shape 2.' },
         { key: 'nodeEvery', label: 'Node every', min: 1, max: 40, step: 1, def: 8, stage: 'dots',
+          when: function (p) { return p.shapeBy !== 'tone'; },
           help: 'Steps between shape 1. Everything between is shape 2. At 1 every dot is shape 1.' },
         { key: 'nodeScale', label: 'Node scale', min: 1, max: 8, step: 0.1, def: 2.2, stage: 'dots',
           help: 'How much bigger shape 1 is than shape 2.' },
         { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.6, stage: 'dots' },
         { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots' },
+        { key: 'sizeByTone', label: 'Size by tone', min: -1, max: 1, step: 0.01, def: 0, stage: 'dots',
+          help: 'Positive grows dots towards the lights, negative towards the darks, 0 is an even mark.' },
+        { key: 'toneMin', label: 'Tone from', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots',
+          help: 'Dots exist only where the picture falls inside this window.' },
+        { key: 'toneMax', label: 'Tone to', min: 0, max: 1, step: 0.01, def: 1, stage: 'dots' },
         { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 11, stage: 'dots', wide: true }
       ]
     }
@@ -101,7 +124,6 @@ var CD = window.CD || {};
     depthSmoothing: 0,      // no blur on the depth field
     flowStrength: 1,        // pure depth contours
     flowAngle: 0,           // inert once flow strength is 1
-    sizeByTone: 0,          // an even mark; tone drives nothing about size
     sizeFalloff: 1,
     edgeFalloff: 0,
     edgeWidth: 34,
@@ -157,7 +179,16 @@ var CD = window.CD || {};
 
     SCHEMA.forEach(function (g) {
       var sec = el('section', 'group');
-      sec.appendChild(el('h2', null, g.group));
+      /* Sections collapse. The tool has more capability than fits a laptop
+       * panel, and the answer to that is to let you put away the parts you are
+       * not working on rather than to leave things out. */
+      var head = el('button', 'group-head');
+      head.appendChild(el('span', 'caret', '\u25be'));
+      head.appendChild(el('span', null, g.group));
+      head.addEventListener('click', function () {
+        sec.classList.toggle('collapsed');
+      });
+      sec.appendChild(head);
       var grid = el('div', 'grid');
       sec.appendChild(grid);
 
@@ -193,8 +224,28 @@ var CD = window.CD || {};
           row.appendChild(lab);
           refs[c.key] = { set: function (v) { cb.checked = !!v; } };
 
-        } else if (c.type === 'mode' || c.type === 'spread') {
-          var opts = c.type === 'mode' ? MODES : [
+        } else if (c.type === 'matte') {
+          var mrow = el('div', 'upload-row');
+          var mbtn = el('button', 'mini shape-slot', 'Subject matte');
+          if (c.help) mbtn.title = c.help;
+          mbtn.addEventListener('click', function () { hooks.pickMatte(); });
+          mrow.appendChild(mbtn);
+          var mname = el('span', 'file-name', 'none');
+          mrow.appendChild(mname);
+          var mclr = el('button', 'mini', 'Clear');
+          mclr.addEventListener('click', function () { hooks.clearMatte(); });
+          mrow.appendChild(mclr);
+          row.appendChild(mrow);
+          refs.__matte = {
+            set: function () {},
+            loaded: function (name) { mname.textContent = name; }
+          };
+
+        } else if (c.type === 'mode' || c.type === 'spread' || c.type === 'shapeby') {
+          var opts = c.type === 'mode' ? MODES : c.type === 'shapeby' ? [
+            { key: 'rhythm', label: 'Rhythm' },
+            { key: 'tone', label: 'Tone' }
+          ] : [
             { key: 'both', label: 'Both' },
             { key: 'inside', label: 'Inside' },
             { key: 'outside', label: 'Outside' }
@@ -227,20 +278,21 @@ var CD = window.CD || {};
         } else if (c.type === 'shapes') {
           /* Exactly two slots. Shape 1 is the node, shape 2 the link; either
            * falls back to a plain ellipse until an SVG is loaded. */
-          row.appendChild(el('label', null, c.label));
           var names = {};
+          var slots = el('div', 'slot-grid');
           CD.PAIR_SLOTS.forEach(function (slot, i) {
-            var srow = el('div', 'upload-row');
-            var btn = el('button', 'mini shape-slot',
-              'Shape ' + (i + 1) + (slot === 'node' ? ' · node' : ' · link'));
-            btn.title = 'Upload an SVG for ' + (slot === 'node' ? 'the marked points' : 'the run between them');
+            var cell = el('div', 'slot-cell');
+            var btn = el('button', 'mini shape-slot', 'Shape ' + (i + 1));
+            btn.title = 'Upload an SVG for ' +
+              (slot === 'node' ? 'shape 1 — the marked points' : 'shape 2 — the run between them');
             btn.addEventListener('click', function () { hooks.pickShape(slot); });
-            srow.appendChild(btn);
+            cell.appendChild(btn);
             var nm = el('span', 'file-name', 'ellipse');
-            srow.appendChild(nm);
+            cell.appendChild(nm);
             names[slot] = nm;
-            row.appendChild(srow);
+            slots.appendChild(cell);
           });
+          row.appendChild(slots);
           refs.__shapes = {
             set: function () {},
             loaded: function (slot, name) {
@@ -273,7 +325,10 @@ var CD = window.CD || {};
           };
         }
 
-        if (row !== toggleRow) row.dataset.modes = c.modes ? c.modes.join(' ') : '';
+        if (row !== toggleRow) {
+          row.dataset.modes = c.modes ? c.modes.join(' ') : '';
+          if (c.when) row.__when = c.when;
+        }
       });
 
       sections.push({ el: sec, modes: g.modes || null });
@@ -293,6 +348,10 @@ var CD = window.CD || {};
         s.el.querySelectorAll('.ctrl').forEach(function (r) {
           var m = r.dataset.modes;
           var vis = !m || m.split(' ').indexOf(params.renderMode) >= 0;
+          /* A control that cannot affect anything in the current state is not
+           * merely disabled, it is absent — the panel stays as short as the
+           * work in front of you. */
+          if (vis && r.__when) vis = !!r.__when(params);
           r.hidden = !vis;
           if (vis) shown++;
         });
