@@ -27,15 +27,13 @@ var CD = window.CD || {};
   }
 
   /* opts: {width, height, background, dots, shapeType, ramp, colorGamma,
-   *        title, buckets} */
+   *        params, title, buckets} */
   function buildSVG(opts) {
     var w = opts.width, h = opts.height;
-    var shape = CD.getShape(opts.shapeType);
     var dots = opts.dots;
     var ramp = opts.ramp;
     var gamma = opts.colorGamma;
     var buckets = opts.buckets || 24;
-    var isCircle = shape.round && !shape.custom;
 
     var out = [];
     out.push('<?xml version="1.0" encoding="UTF-8"?>');
@@ -44,19 +42,37 @@ var CD = window.CD || {};
     out.push('<title>' + esc(opts.title || 'Contour dot render') + '</title>');
     out.push('<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="' + opts.background + '"/>');
 
-    if (!isCircle) {
-      var nt = shape.normTransform();
-      out.push('<defs>');
-      if (nt) {
-        out.push('<g id="dot" transform="' + nt + '"><path d="' + shape.d + '"/></g>');
-      } else {
-        out.push('<path id="dot" d="' + shape.d + '"/>');
+    /* Shapes go into <defs> on demand as dots reference them. One shape for
+     * every mode except node/link, which places two. */
+    var defs = [];
+    var used = {};
+
+    function defIdFor(type) {
+      if (!used[type]) {
+        var sh = CD.getShape(type);
+        var id = 'dot-' + type;
+        var nt = sh.normTransform();
+        /* Each part keeps its own paint. Stroked parts take their colour from
+         * `currentColor`, which the enclosing colour group sets alongside
+         * fill, so one group still drives every dot in a bucket. */
+        var inner = sh.parts.map(function (part) {
+          if (part.stroke) {
+            return '<path d="' + part.d + '" fill="none" stroke="currentColor" ' +
+                   'stroke-width="' + num(part.width, 3) + '"/>';
+          }
+          return '<path d="' + part.d + '"' +
+                 (part.rule === 'evenodd' ? ' fill-rule="evenodd"' : '') + '/>';
+        }).join('');
+        defs.push('<g id="' + id + '"' + (nt ? ' transform="' + nt + '"' : '') +
+                  '>' + inner + '</g>');
+        used[type] = id;
       }
-      out.push('</defs>');
+      return used[type];
     }
 
     /* Group dots into a small number of colour buckets so the file is a
      * handful of <g fill> groups rather than one fill attribute per dot. */
+    var body = [];
     var groups = [];
     var i;
     for (i = 0; i < buckets; i++) groups.push([]);
@@ -70,29 +86,41 @@ var CD = window.CD || {};
       if (!list.length) continue;
       var mid = (g + 0.5) / buckets;
       var col = CD.rgbToHex(ramp(mid, gamma));
-      out.push('<g fill="' + col + '">');
+      body.push('<g fill="' + col + '" color="' + col + '">');
       for (i = 0; i < list.length; i++) {
         var dt = list[i];
-        if (isCircle) {
-          out.push('<circle cx="' + num(dt.x) + '" cy="' + num(dt.y) +
-                   '" r="' + num(dt.s, 3) + '"/>');
+        var type = CD.shapeTypeForDot(opts.params, dt);
+        var shape = CD.getShape(type);
+        if (shape.round && !shape.custom) {
+          /* a circle is shorter and more portable as a real <circle> */
+          body.push('<circle cx="' + num(dt.x) + '" cy="' + num(dt.y) +
+                    '" r="' + num(dt.s, 3) + '"/>');
         } else {
+          var id = defIdFor(type);
           var t = 'translate(' + num(dt.x) + ' ' + num(dt.y) + ')';
           if (shape.spin) {
             var deg = dt.r * DEG;
             /* squares and diamonds repeat every 90 degrees; folding the angle
              * into a short range keeps the numbers small */
-            if (opts.shapeType === 'square' || opts.shapeType === 'diamond') {
+            if (type === 'square' || type === 'diamond') {
               deg = ((deg % 90) + 90) % 90;
             }
             t += ' rotate(' + num(deg, 1) + ')';
           }
           t += ' scale(' + num(dt.s, 3) + ')';
-          out.push('<use xlink:href="#dot" href="#dot" transform="' + t + '"/>');
+          body.push('<use xlink:href="#' + id + '" href="#' + id +
+                    '" transform="' + t + '"/>');
         }
       }
-      out.push('</g>');
+      body.push('</g>');
     }
+
+    if (defs.length) {
+      out.push('<defs>');
+      for (i = 0; i < defs.length; i++) out.push(defs[i]);
+      out.push('</defs>');
+    }
+    for (i = 0; i < body.length; i++) out.push(body[i]);
 
     out.push('</svg>');
     return out.join('\n');

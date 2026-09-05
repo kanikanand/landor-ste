@@ -44,17 +44,34 @@ var CD = window.CD || {};
     var depth = new CD.Field(w, h, 1);
     var d = depth.data;
 
+    /* Tonality: how light or dark the photograph is, 1 light and 0 dark.
+     * Written to its own array and never fed back into the depth pipeline, so
+     * the surface renderer is bit-for-bit what it always was. The edge
+     * renderer uses it to decide how much shading a region earns; it is
+     * deliberately never inverted, because Invert says which side of the
+     * threshold is the subject, not which parts of the picture are dark. */
+    var tone = new CD.Field(w, h, 1);
+    var tn = tone.data;
+
     /* 1. luminance -> depth. White is near, black is far, per the brief. */
     for (i = 0; i < n; i++) {
       var r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
       var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      tn[i] = lum;
       d[i] = p.invert ? 1 - lum : lum;
     }
 
     /* 2. image-level contrast, before anything structural happens. */
     if (p.imageContrast !== 1) {
-      for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.imageContrast);
+      for (i = 0; i < n; i++) {
+        d[i] = contrastCurve(d[i], p.imageContrast);
+        tn[i] = contrastCurve(tn[i], p.imageContrast);
+      }
     }
+    /* Only enough blur to kill grain: tonality is a local question, and
+     * averaging it over the depth-smoothing radius would smear it across a
+     * whole stack of contour bands. */
+    tone.blur(2, 2);
 
     /* 3. depth smoothing. This is what turns a noisy photograph into a
      *    surface: streamlines can only be continuous if depth is continuous. */
@@ -96,7 +113,7 @@ var CD = window.CD || {};
       }
     }
 
-    return { depth: depth, mask: mask, grad: grad, w: w, h: h };
+    return { depth: depth, tone: tone, mask: mask, grad: grad, w: w, h: h };
   }
 
   /* --------------------------------------------------------------------------
@@ -188,7 +205,28 @@ var CD = window.CD || {};
     return { x: Math.cos(a), y: Math.sin(a), a: a };
   }
 
+  /* The silhouette the edge renderer traces.
+   *
+   * Kept separate from `dep.mask` on purpose: the surface renderer's mask is
+   * v1's and stays untouched. This one is isolated to a single subject, has
+   * enclosed holes filled — an eye socket dipping past the threshold would
+   * otherwise grow its own set of contours — and is feathered a little harder,
+   * because marching squares should not have to follow a stair-stepped edge.
+   */
+  function buildEdgeMask(mask, p) {
+    var m = mask;
+    if (p.largestRegion) {
+      m = CD.largestRegion(m, 0.5);
+      m = CD.fillEnclosed(m, 0.5);
+    } else {
+      m = m.clone();
+    }
+    m.blur(2, 2);
+    return m;
+  }
+
   CD.buildDepth = buildDepth;
+  CD.buildEdgeMask = buildEdgeMask;
   CD.buildFlow = buildFlow;
   CD.dirAt = dirAt;
   CD.contrastCurve = contrastCurve;

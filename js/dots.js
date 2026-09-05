@@ -27,16 +27,41 @@ var CD = window.CD || {};
     var p = ctx.params;
     var rng = ctx.rng;
 
+    var bandLimit = ctx.bandLimit || null;   // edge lines: tone gates the bands
+
+    /* Node + link: shape 1 lands every Nth step along the line, shape 2 fills
+     * the run between. Off unless the shape mode asks for it, and every branch
+     * below is guarded, so a render that does not use it walks exactly the
+     * path v1 walked — same arithmetic, same sequence of random draws. */
+    var pairMode = p.shapeType === 'nodes';
+    var nodeEvery = Math.max(1, Math.round(p.nodeEvery));
+    var nodeScale = Math.max(0.1, p.nodeScale);
+
     var dots = [];
     var jitter = p.randomness;
     var spacingBase = Math.max(0.6, p.dotSpacing);
     var maxDots = p.maxDots;
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
-      var pts = lines[li];
-      if (pts.length < 4) continue;
+      var line = lines[li];
+      var pts = line.pts;
+      var band = line.band || 0;
+      /* Edge contours are evenly spaced along the line and gated by band;
+       * surface streamlines take their spacing from depth and are gated by the
+       * silhouette, as they always have. */
+      var isEdge = line.kind === 'edge';
+      if (!pts || pts.length < 4) continue;
 
-      var carry = rng() * spacingBase; // desync the phase of each line
+      /* Normally each line starts on a random phase so the dots do not comb
+       * into rows. In node/link mode the phase is the rhythm, so every line
+       * starts on a node instead. */
+      var carry = pairMode ? 0 : rng() * spacingBase;
+      var idx = 0;                 // step count along this line
+      var arc = 0;                 // arc length walked so far
+      var segStart = 0;            // arc length at the start of this segment
+      var lastNodeArc = -1e9;
+      var lastNodeSize = 0;
+
       for (var i = 0; i < pts.length - 2; i += 2) {
         var ax = pts[i], ay = pts[i + 1];
         var bx = pts[i + 2], by = pts[i + 3];
@@ -47,6 +72,7 @@ var CD = window.CD || {};
 
         var t = carry;
         while (t < segLen) {
+          arc = segStart + t;
           var x = ax + ux * t, y = ay + uy * t;
           var fx = x * s, fy = y * s;
           var m = mask.sample(fx, fy, 0);
@@ -61,14 +87,44 @@ var CD = window.CD || {};
            * viewer. Near dots are also the biggest, so the step is floored at
            * a little over one diameter — otherwise the densest, largest dots
            * fuse into a solid line and the halftone reads as fill. */
-          var localSpacing = spacingBase * lerp(1.5, 0.68, d);
+          var localSpacing = isEdge ? spacingBase : spacingBase * lerp(1.5, 0.68, d);
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
           localSpacing = Math.max(size * 2.15, localSpacing);
 
-          if (m > 0.5 && size > 0.16) {
-            /* rotation follows the contour */
-            var dir = CD.dirAt(flow, fx, fy);
-            var rot = Math.atan2(dir.y, dir.x);
+          var role = null;
+          if (pairMode) {
+            if (idx % nodeEvery === 0) {
+              role = 'node';
+              size *= nodeScale;
+            } else {
+              role = 'link';
+              /* Keep clear of the node just placed, so it reads as a marked
+               * point with the run starting after it rather than as a blob
+               * with dots buried in its edge. */
+              if (arc - lastNodeArc < (lastNodeSize + size) * 0.95) {
+                idx++;
+                t += localSpacing;
+                continue;
+              }
+            }
+          }
+
+          var alive = (isEdge && bandLimit)
+            ? (band + 1 <= bandLimit(fx, fy))
+            : (m > 0.5);
+
+          if (alive && size > 0.16) {
+            /* Rotation follows the contour. With a flow field that is the
+             * field direction; on an extracted iso-line there is no field, so
+             * it is the line's own tangent — the same thing measured
+             * directly. */
+            var rot;
+            if (flow) {
+              var dir = CD.dirAt(flow, fx, fy);
+              rot = Math.atan2(dir.y, dir.x);
+            } else {
+              rot = Math.atan2(uy, ux);
+            }
             rot += (rng() - 0.5) * 2 * jitter * 0.9;
 
             /* relief displacement along the depth gradient */
@@ -93,12 +149,15 @@ var CD = window.CD || {};
               px += ux * jt; py += uy * jt;
             }
 
-            dots.push({ x: px, y: py, s: size, r: rot, d: d });
+            if (role === 'node') { lastNodeArc = arc; lastNodeSize = size; }
+            dots.push({ x: px, y: py, s: size, r: rot, d: d, role: role });
             if (dots.length >= maxDots) break;
           }
+          idx++;
           t += localSpacing;
         }
         carry = t - segLen;
+        segStart += segLen;
       }
     }
 

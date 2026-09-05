@@ -23,7 +23,8 @@ var CD = window.CD || {};
     srcName: 'sample',
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
-    dep: null, flow: null, lines: [], dots: [],
+    dep: null, flow: null, edgeMask: null, sd: null, lines: [], dots: [],
+    pendingShapeSlot: null,
     ramp: null,
     dirty: 'depth',
     pendingFull: null,
@@ -177,22 +178,52 @@ var CD = window.CD || {};
   }
 
   function stageFlow(p) {
+    /* Edge mode takes its direction from the extracted contour's own tangent,
+     * so there is no field to build. */
+    if (p.renderMode === 'edge') { state.flow = null; return; }
     state.flow = CD.buildFlow(state.dep, p, function (x, y) {
       return (typeof noise === 'function') ? noise(x, y) : 0.5;
     });
   }
 
   function stageLines(p) {
-    var tracer = new CD.Tracer({
-      flow: state.flow,
-      depth: state.dep.depth,
-      mask: state.dep.mask,
-      viewW: state.viewW, viewH: state.viewH,
-      fieldScale: state.fieldScale,
-      params: p,
-      rng: CD.makeRng(p.seed)
-    });
-    state.lines = tracer.run();
+    var lines = [];
+
+    if (p.renderMode !== 'surface') {
+      /* The edge silhouette is derived from the mask but kept separate from
+       * it: isolated to one subject, holes filled, feathered a little harder
+       * for tracing. The surface renderer keeps using the mask untouched. */
+      state.edgeMask = CD.buildEdgeMask(state.dep.mask, p);
+      var built = CD.buildEdgeLines({
+        dep: { mask: state.edgeMask },
+        params: p,
+        fieldScale: state.fieldScale
+      });
+      state.sd = built.sd;
+      for (var k = 0; k < built.lines.length; k++) {
+        built.lines[k].kind = 'edge';
+        lines.push(built.lines[k]);
+      }
+    }
+
+    if (p.renderMode !== 'edge') {
+      var tracer = new CD.Tracer({
+        flow: state.flow,
+        depth: state.dep.depth,
+        mask: state.dep.mask,
+        viewW: state.viewW, viewH: state.viewH,
+        fieldScale: state.fieldScale,
+        params: p,
+        rng: CD.makeRng(p.seed)
+      });
+      /* The tracer yields bare polylines; the dot builder takes tagged ones. */
+      var traced = tracer.run();
+      for (var j = 0; j < traced.length; j++) {
+        lines.push({ pts: traced[j], band: 0, kind: 'surface' });
+      }
+    }
+
+    state.lines = lines;
   }
 
   function stageDots(p) {
@@ -204,7 +235,8 @@ var CD = window.CD || {};
       flow: state.flow,
       fieldScale: state.fieldScale,
       params: p,
-      rng: CD.makeRng(p.seed ^ 0x9e3779b9)
+      rng: CD.makeRng(p.seed ^ 0x9e3779b9),
+      bandLimit: CD.makeBandLimit(state.dep.tone, p)
     });
   }
 
@@ -236,7 +268,7 @@ var CD = window.CD || {};
       ctx.fillStyle = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
       for (i = 0; i < list.length; i++) {
         var d = list[i];
-        CD.drawDot(ctx, d.x, d.y, d.s, d.r, p.shapeType);
+        CD.drawDot(ctx, d.x, d.y, d.s, d.r, CD.shapeTypeForDot(p, d));
       }
     }
     ctx.restore();
@@ -345,6 +377,7 @@ var CD = window.CD || {};
       background: p.background,
       dots: state.dots,
       shapeType: p.shapeType,
+      params: p,
       ramp: CD.makeRamp(p.colorFar, p.colorNear),
       colorGamma: p.colorGamma,
       title: state.srcName + ' — contour dots'
@@ -379,18 +412,28 @@ var CD = window.CD || {};
 
     shapeInput.addEventListener('change', function () {
       var f = shapeInput.files[0];
+      var slot = state.pendingShapeSlot;
+      state.pendingShapeSlot = null;
       shapeInput.value = '';
       if (!f) return;
       var fr = new FileReader();
       fr.onload = function () {
         try {
           var shape = CD.shapeFromSVG(fr.result, f.name);
-          CD.setCustomShape(shape);
-          state.params.shapeType = 'custom';
-          if (ui.refs.shapeType.customLoaded) ui.refs.shapeType.customLoaded(f.name);
-          ui.refs.shapeType.set('custom');
+          if (slot) {
+            CD.setPairShape(slot, shape);
+            state.params.shapeType = 'nodes';
+            if (ui.refs.shapeType.pairLoaded) ui.refs.shapeType.pairLoaded(slot, f.name);
+            ui.refs.shapeType.set('nodes');
+            status('Shape ' + (slot === 'node' ? '1' : '2') + ' set from ' + f.name);
+          } else {
+            CD.setCustomShape(shape);
+            state.params.shapeType = 'custom';
+            if (ui.refs.shapeType.customLoaded) ui.refs.shapeType.customLoaded(f.name);
+            ui.refs.shapeType.set('custom');
+            status('Dot shape set from ' + f.name);
+          }
           markDirty('draw');
-          status('Dot shape set from ' + f.name);
         } catch (e) {
           status(e.message, true);
         }
@@ -432,6 +475,9 @@ var CD = window.CD || {};
       var f = e.dataTransfer.files[0];
       if (!f) return;
       if (/svg/.test(f.type) || /\.svg$/i.test(f.name)) {
+        /* A drop still means the single Custom shape, as in v1; the two
+         * node/link slots are only ever filled by their own buttons. */
+        state.pendingShapeSlot = null;
         var dt = new DataTransfer();
         dt.items.add(f);
         shapeInput.files = dt.files;
@@ -462,8 +508,14 @@ var CD = window.CD || {};
     noLoop();
 
     ui = CD.UI.buildPanel(document.getElementById('controls'), state.params,
-      function (stage) { markDirty(stage); },
-      { pickShape: function () { document.getElementById('shapeInput').click(); } });
+      function (stage) {
+        if (ui) ui.syncVisibility();
+        markDirty(stage);
+      },
+      { pickShape: function (slot) {
+          state.pendingShapeSlot = slot || null;
+          document.getElementById('shapeInput').click();
+        } });
 
     wireChrome();
     setSource(makeSampleImage(), 'sample');

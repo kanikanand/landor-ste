@@ -219,3 +219,13 @@ input[type=color] {
   #panel { order: 2; border-right: 0; border-top: 1px solid var(--line); max-height: 50vh; }
   #stage { order: 1; min-height: 55vh; }
 }
+
+/* node + link slots */
+.pair-uploads {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
+}
+.pair-uploads .help { margin: 0 0 8px; }
+.pair-uploads .upload-row { margin-top: 6px; }
+.pair-slot { min-width: 68px; text-align: center; }

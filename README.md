@@ -4,6 +4,13 @@ A standalone p5.js prototype that turns a photograph into a field of oriented
 dots flowing along the contours of its implied 3D form, and exports the result
 as a fully editable SVG.
 
+**This is v1 with two things added and nothing changed.** The surface renderer
+below — the depth field, the flow field, the streamline tracing and every
+decision about where a dot goes and how big it is — is byte-for-byte v1. Added
+alongside it: an **edge renderer** that traces the subject's outline, and a
+**node + link** dot mode that alternates two uploaded shapes along a line. See
+[What v5 adds](#what-v5-adds).
+
 ![pipeline: depth field, flow field, streamlines, oriented dots](docs/preview.png)
 
 ## Run it
@@ -80,6 +87,66 @@ banding of the reference, rather than the clumping and crossing you get from
 seeding at random. Separation is depth-modulated, so near regions of the
 surface carry more lines than far ones.
 
+## What v5 adds
+
+### Edge renderer
+
+The **Mode** switch chooses *Surface* (everything below, unchanged), *Edge*, or
+*Both* — which generates each and draws them together.
+
+Edge mode rests on the **signed distance** to the subject's silhouette,
+positive inside and negative out in the background. Its zero level *is* the
+edge and every other level is a parallel offset, so one contour and eight
+stepping outward are the same operation at different levels. Contours are
+extracted exactly, by marching squares, rather than approximated.
+
+- **Number of lines** — how many contours step away from the edge.
+- **Spread** — which side of the edge they step towards.
+- **Shading** — how much tonality thins the stack. At 0 every band is drawn
+  everywhere, so the contours are pure geometric offsets of the silhouette. At
+  1 the darks keep the full stack and the lights fall back to the outline.
+- **Largest region only** — traces one subject and fills its enclosed holes,
+  so an eye socket dipping past the threshold does not grow its own contours.
+
+The silhouette it traces is derived from the threshold mask but held
+separately: isolated, hole-filled, and feathered a little harder for tracing.
+The surface renderer keeps using the mask exactly as v1 built it, which is why
+turning any of this on cannot move a single surface dot.
+
+The tonality that drives Shading is taken from the raw luminance and is never
+inverted — **Invert depth** says which side of the threshold is the subject,
+which is a different question from which parts of the picture are dark.
+
+### Node + link
+
+A shape mode alongside the built-ins and the single Custom slot. It adds two
+more slots: **shape 1** lands every Nth step along a line and **shape 2** fills
+the run between, so a contour reads as marked points joined by a dotted rule
+rather than an undifferentiated stream of dots. Either falls back to a plain
+circle until an SVG is loaded into it.
+
+- **Node every** — steps between shape 1. At 1 every dot is shape 1.
+- **Node scale** — how much bigger shape 1 is than shape 2.
+
+Each line starts on a node rather than a random phase, so an open contour
+terminates with one instead of cutting off mid-run, and links are suppressed
+within about a node radius of the node just placed.
+
+Uploaded SVGs are now kept as a list of parts, each with its own fill, stroke,
+stroke-width and fill-rule, rather than merged into one filled path. Merging
+loses exactly what makes a shape a shape: a subpath declared `fill-rule="evenodd"`
+to punch a hole fills solid, and art defined by stroke with no fill becomes a
+blob. A built-in is a single filled part, so this is identical to v1 for every
+shape that ships with the tool.
+
+### The guarantee
+
+Surface output is verified against v1 by dumping every dot from both builds and
+comparing field by field — position, size, rotation and depth. Across eight
+parameter regimes (defaults, heavy smoothing, dense, jittered, blended flow,
+sparse, a non-circle shape, inverted), roughly 63,000 dots, every value is
+identical. In Both mode the surface layer still yields v1's exact contour count.
+
 ## The dot primitive
 
 This is deliberately **not** a generic particle system. A dot is a small piece
@@ -132,12 +199,18 @@ this is the relief that makes the bands bulge towards the viewer rather than
 read as a flat contour map), Depth contrast, Depth smoothing (turns a noisy
 photograph into a continuous surface — contours need this).
 
-**Contours** — Line density, Line spacing, Flow strength (0 = straight lines
-at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
-Flow coherence.
+**Render** — Mode: Surface, Edge or Both. Controls belonging to one renderer
+are hidden in the other.
 
-**Dots** — Shape, Dot size, Size variation, Size falloff, Dot spacing,
-Randomness.
+**Contours (Surface)** — Line density, Line spacing, Flow strength (0 =
+straight lines at the base angle, 1 = pure depth contours), Flow distortion,
+Base angle, Flow coherence.
+
+**Contours (Edge)** — Number of lines, Line spacing, Spread, Shading, Shading
+falloff, Largest region only.
+
+**Dots** — Shape (including Node + link with its two slots), Node every, Node
+scale, Dot size, Size variation, Size falloff, Dot spacing, Randomness.
 
 **Colour** — Background, Far colour, Near colour, Colour falloff.
 
@@ -187,9 +260,13 @@ possible settings (~100k dots) take about 3 s.
 ```
 index.html            markup + script order
 css/style.css         tool chrome
-js/core.js            Field container (bilinear sampling, separable blur), math
+js/core.js            Field container (bilinear sampling, separable blur),
+                      exact Euclidean distance transform, signed distance,
+                      connected-region isolation and hole filling, math
 js/field.js           depth field, gradient, flow field
 js/streamlines.js     evenly-spaced streamline tracer + spatial hash
+js/isolines.js        marching squares: iso-contours as linked polylines
+js/edge.js            signed-distance bands and the tone gate
 js/shapes.js          the dot primitive, drawDot, SVG shape upload
 js/dots.js            streamlines -> oriented dots, colour ramp
 js/svgexport.js       vector export
