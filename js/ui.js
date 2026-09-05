@@ -1,6 +1,16 @@
 /* ============================================================================
  * ui.js — declarative control panel.
  *
+ * Three modes, each with its own reading of the picture. A mode owns the
+ * controls that decide what its marks are made of — its own threshold and
+ * contrast, its own dot size and node scale — because the three want
+ * different things from the same photograph: the surface wants a soft field,
+ * the edge wants a hard silhouette, the fingerprint wants only the ground the
+ * subject is standing against. Everything the three share (the node/link
+ * shapes, the colours, whether the photograph shows through) sits once at the
+ * top, and each mode's own group appears only while that mode is on, so the
+ * panel stays the height of the window.
+ *
  * Every control declares which pipeline stage it dirties, so moving a dot
  * slider does not rebuild the depth field or re-trace the streamlines. The
  * stages cascade: depth -> flow -> lines -> dots -> draw.
@@ -12,118 +22,138 @@ var CD = window.CD || {};
 
   var STAGES = ['depth', 'flow', 'lines', 'dots', 'draw'];
 
+  var MODES = ['surface', 'edge', 'fingerprint'];
+
+  /* Which toggle switches each mode on. */
+  var MODE_ON = {
+    surface: 'surfaceOn',
+    edge: 'edgeOn',
+    fingerprint: 'fingerprintOn'
+  };
+
+  /* A mode's own controls, named as the pipeline expects to read them. Every
+   * stage downstream still sees a plain params object with generic keys —
+   * `threshold`, `dotSize` — so nothing below this file has to know that
+   * three sets of them exist. */
+  var MODE_KEYS = {
+    surface: {
+      threshold: 'sThreshold', imageContrast: 'sContrast',
+      depthSmoothing: 'sSmoothing', depthExaggeration: 'sDepth',
+      lineSpacing: 'sLineSpacing',
+      dotSize: 'sDotSize', dotSpacing: 'sDotSpacing', nodeScale: 'sNodeScale'
+    },
+    edge: {
+      threshold: 'eThreshold', imageContrast: 'eContrast',
+      edgeTolerance: 'eTolerance',
+      dotSize: 'eDotSize', dotSpacing: 'eDotSpacing', nodeScale: 'eNodeScale'
+    },
+    fingerprint: {
+      threshold: 'fThreshold', imageContrast: 'fContrast',
+      edgeTolerance: 'fTolerance', ridgeSpacing: 'fSpacing', swirl: 'fSwirl',
+      dotSize: 'fDotSize', dotSpacing: 'fDotSpacing', nodeScale: 'fNodeScale'
+    }
+  };
+
   var SCHEMA = [
     {
-      group: 'Render', hint: 'Two independent layers. Either, or both at once.',
+      group: 'Picture',
       controls: [
-        { key: 'surfaceLayer', label: 'Surface contours', type: 'toggle', def: true, stage: 'flow',
-          help: 'Streamlines of the flow field, wrapping the form.' },
-        { key: 'edgeLayer', label: 'Edge contours', type: 'toggle', def: false, stage: 'lines',
-          help: 'Offset contours of the silhouette, banding into the darks.' }
-      ]
-    },
-    {
-      group: 'Image', hint: 'The photograph, before it becomes a surface.',
-      controls: [
-        { key: 'threshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
-          help: 'Everything below this is negative space — pure background, no dots.' },
-        { key: 'imageContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
-        { key: 'invert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
-          help: 'Use when the subject is lit dark-on-light.' }
-      ]
-    },
-    {
-      group: 'Depth', hint: 'Field 1. Black is far, white is near.',
-      controls: [
-        { key: 'depthExaggeration', label: 'Depth exaggeration', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots',
-          help: 'Displaces each dot along the depth gradient. This is the relief.' },
-        { key: 'depthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth',
-          help: 'Steepens near against far.' },
-        { key: 'depthSmoothing', label: 'Depth smoothing', min: 0, max: 30, step: 1, def: 10, stage: 'depth',
-          help: 'Turns a noisy photo into a continuous surface. Contours need this.' }
-      ]
-    },
-    {
-      group: 'Contours', hint: 'Field 2. Flow runs along the iso-depth lines.',
-      controls: [
-        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines', modes: ['surface'] },
-        { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines', modes: ['surface'] },
-        { key: 'flowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow', modes: ['surface'],
-          help: '0 = straight lines at the base angle, 1 = pure depth contours.' },
-        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow', modes: ['surface'] },
-        { key: 'flowAngle', label: 'Base angle', min: 0, max: 180, step: 1, def: 0, stage: 'flow', modes: ['surface'],
-          help: 'Direction the lines fall back to where the surface is flat.' },
-        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow', modes: ['surface'],
-          help: 'Diffuses direction into flat regions so lines stay continuous.' }
-      ]
-    },
-    {
-      group: 'Edge', hint: 'The line where the subject leaves the background.',
-      controls: [
-        { key: 'edgeSource', label: 'Separation', type: 'segment', def: 'subject', stage: 'lines',
-          modes: ['edge'],
-          options: [{ key: 'subject', label: 'Subject' }, { key: 'threshold', label: 'Threshold' }],
-          help: 'Subject floods the background in from the frame and keeps everything it cannot reach, so dark hair and a dark shirt stay part of the figure. Threshold is the plain luminance cut.' },
-        { key: 'edgeTolerance', label: 'Separation tolerance', min: 0.02, max: 0.6, step: 0.01, def: 0.12, stage: 'lines',
-          modes: ['edge'],
-          help: 'How far that flood may stray from the frame\'s own tone before it stops.' },
-        { key: 'isolateSubject', label: 'Isolate subject', type: 'toggle', def: true, stage: 'lines',
-          modes: ['edge'],
-          help: 'Drops stray specks and fills enclosed holes, while keeping every substantial part of the figure — separation can cut a head off its shoulders, and both are still the subject. Affects the silhouette only; the surface renderer keeps the mask exactly as it was.' },
-        { key: 'lineCount', label: 'Number of lines', min: 1, max: 14, step: 1, def: 7, stage: 'lines',
-          modes: ['edge'],
-          help: 'Contours stepping away from the edge. The first is the silhouette itself.' },
-        { key: 'edgeSpacing', label: 'Contour spacing', min: 2, max: 60, step: 0.5, def: 11, stage: 'lines',
-          modes: ['edge'],
-          help: 'Distance between those contours, in pixels.' },
-        { key: 'lineSpread', label: 'Spread', type: 'segment', def: 'inside', stage: 'lines',
-          modes: ['edge'],
-          options: [{ key: 'both', label: 'Both' }, { key: 'inside', label: 'Inside' },
-                    { key: 'outside', label: 'Outside' }],
-          help: 'Which side of the edge the extra contours step towards.' },
-        { key: 'shading', label: 'Shading', min: 0, max: 1, step: 0.01, def: 0.7, stage: 'dots',
-          modes: ['edge'],
-          help: 'How much tonality thins the stack: an outline alone through the lights, the full stack in the darks. At 0 every contour is drawn everywhere.' },
-        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'dots',
-          modes: ['edge'],
-          help: 'Higher confines the shading to the deepest darks.' },
-        { key: 'edgeDotSize', label: 'Edge dot size', min: 0.3, max: 14, step: 0.1, def: 2.6, stage: 'dots',
-          modes: ['edge'],
-          help: 'Edge marks are one size along the whole contour — they describe the outline, not the surface — so they have their own size and spacing rather than depth\'s.' },
-        { key: 'edgeDotSpacing', label: 'Edge dot spacing', min: 1.5, max: 40, step: 0.25, def: 9, stage: 'dots',
-          modes: ['edge'] }
-      ]
-    },
-    {
-      group: 'Dots', hint: 'Oriented primitives, not particles.',
-      controls: [
-        { key: 'shapeType', label: 'Shape', type: 'shape', def: 'circle', stage: 'draw' },
-        { key: 'nodeEvery', label: 'Node every', min: 1, max: 40, step: 1, def: 8, stage: 'dots',
-          help: 'Steps between shape 1. Everything between is shape 2. Node + link only.' },
-        { key: 'nodeScale', label: 'Node scale', min: 1, max: 8, step: 0.1, def: 2.2, stage: 'dots',
-          help: 'How much bigger shape 1 is than shape 2.' },
-        { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
-        { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0.18, stage: 'dots' },
-        { key: 'sizeFalloff', label: 'Size falloff', min: 0.3, max: 3.5, step: 0.05, def: 1.35, stage: 'dots',
-          help: 'How fast dots shrink as the surface recedes.' },
-        { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
-        { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' }
-      ]
-    },
-    {
-      group: 'Colour', hint: 'Negative space stays black.',
-      controls: [
+        { key: 'showImage', label: 'Show image', type: 'toggle', def: true, stage: 'draw' },
         { key: 'background', label: 'Background', type: 'color', def: '#000000', stage: 'draw' },
-        { key: 'colorFar', label: 'Far colour', type: 'color', def: '#4a0410', stage: 'draw' },
-        { key: 'colorNear', label: 'Near colour', type: 'color', def: '#ff2233', stage: 'draw' },
-        { key: 'colorGamma', label: 'Colour falloff', min: 0.3, max: 3, step: 0.05, def: 1, stage: 'draw' }
+        { key: 'colorFar', label: 'Far', type: 'color', def: '#4a0410', stage: 'draw' },
+        { key: 'colorNear', label: 'Near', type: 'color', def: '#ff2233', stage: 'draw' }
+      ]
+    },
+    {
+      group: 'Modes', cols: 3,
+      controls: [
+        { key: 'surfaceOn', label: 'Surface', type: 'toggle', def: true, stage: 'depth',
+          help: 'Depth contours wrapping the form.' },
+        { key: 'edgeOn', label: 'Edge', type: 'toggle', def: false, stage: 'depth',
+          help: 'One line around the subject.' },
+        { key: 'fingerprintOn', label: 'Fingerprint', type: 'toggle', def: false, stage: 'depth',
+          help: 'Ridges in the background.' }
+      ]
+    },
+    {
+      group: 'Node + link',
+      controls: [
+        { key: 'shapePair', type: 'pair', stage: 'draw' },
+        { key: 'nodeEvery', label: 'Node every', min: 1, max: 40, step: 1, def: 8, stage: 'dots',
+          help: 'Steps between shape 1. Everything between is shape 2.' }
+      ]
+    },
+    {
+      group: 'Surface', mode: 'surface',
+      controls: [
+        { key: 'sThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth' },
+        { key: 'sContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
+        { key: 'sDepth', label: 'Depth', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots',
+          help: 'Displaces each dot along the depth gradient. This is the relief.' },
+        { key: 'sSmoothing', label: 'Smoothing', min: 0, max: 30, step: 1, def: 10, stage: 'depth',
+          help: 'Turns a noisy photo into a continuous surface. Contours need this.' },
+        { key: 'sLineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines' },
+        { key: 'sDotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
+        { key: 'sDotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
+        { key: 'sNodeScale', label: 'Node scale', min: 1, max: 8, step: 0.1, def: 2.2, stage: 'dots' }
+      ]
+    },
+    {
+      group: 'Edge', mode: 'edge',
+      controls: [
+        { key: 'eThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth' },
+        { key: 'eContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
+        { key: 'eTolerance', label: 'Separation', min: 0.02, max: 0.6, step: 0.01, def: 0.12, stage: 'lines',
+          help: 'How far the background may drift from the frame\'s own tone before the subject starts.' },
+        { key: 'eDotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 3.2, stage: 'dots' },
+        { key: 'eDotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 10, stage: 'dots' },
+        { key: 'eNodeScale', label: 'Node scale', min: 1, max: 8, step: 0.1, def: 3, stage: 'dots' }
+      ]
+    },
+    {
+      group: 'Fingerprint', mode: 'fingerprint',
+      controls: [
+        { key: 'fThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth' },
+        { key: 'fContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
+        { key: 'fTolerance', label: 'Separation', min: 0.02, max: 0.6, step: 0.01, def: 0.12, stage: 'lines',
+          help: 'Where the ridges stop: the flood that finds the ground the subject stands against.' },
+        { key: 'fSpacing', label: 'Ridge spacing', min: 4, max: 60, step: 0.5, def: 16, stage: 'lines' },
+        { key: 'fSwirl', label: 'Swirl', min: 0, max: 1, step: 0.01, def: 0.55, stage: 'lines',
+          help: 'How far the ridges wander from clean offsets of the silhouette.' },
+        { key: 'fDotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 1.8, stage: 'dots' },
+        { key: 'fDotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 6, stage: 'dots' },
+        { key: 'fNodeScale', label: 'Node scale', min: 1, max: 8, step: 0.1, def: 2, stage: 'dots' }
       ]
     }
   ];
 
-  /* Values not exposed as sliders: safety limits and the random seed. */
+  /* Held constant rather than exposed. The first block is what the surface
+   * renderer has always used — the values v1 shipped with — so surface mode
+   * still renders exactly what it rendered, with fewer knobs in front of it.
+   * The second block is the same set standing in for the two modes that do
+   * not read depth at all, plus the safety limits and the seed. */
   var FIXED = {
+    invert: false,
+    depthContrast: 1.6,
+    /* only the surface renderer displaces along the depth gradient */
+    depthExaggeration: 0,
+    lineDensity: 1,
+    flowStrength: 0.88,
+    flowDistortion: 0.06,
+    flowAngle: 0,
+    flowSmoothing: 6,
+    sizeVariation: 0.18,
+    sizeFalloff: 1.35,
+    randomness: 0.12,
+    colorGamma: 1,
 
+    /* the edge draws one contour: the silhouette itself */
+    lineCount: 1,
+    isolateSubject: true,
+    /* both non-surface modes read a depth field they never shape */
+    depthSmoothing: 10,
+
+    shapeType: 'nodes',
     maxLines: 5000,
     maxPoints: 900000,
     maxDots: 160000,
@@ -137,9 +167,30 @@ var CD = window.CD || {};
     var p = {};
     Object.keys(FIXED).forEach(function (k) { p[k] = FIXED[k]; });
     SCHEMA.forEach(function (g) {
-      g.controls.forEach(function (c) { p[c.key] = c.def; });
+      g.controls.forEach(function (c) { if (c.def !== undefined) p[c.key] = c.def; });
     });
     return p;
+  }
+
+  /* One mode's view of the parameters, flattened to the generic names every
+   * stage below already reads. */
+  function modeParams(p, mode) {
+    var q = {};
+    Object.keys(FIXED).forEach(function (k) { q[k] = FIXED[k]; });
+    q.seed = p.seed;
+    q.nodeEvery = p.nodeEvery;
+    q.background = p.background;
+    q.colorFar = p.colorFar;
+    q.colorNear = p.colorNear;
+    q.showImage = p.showImage;
+    q.mode = mode;
+    var map = MODE_KEYS[mode];
+    Object.keys(map).forEach(function (k) { q[k] = p[map[k]]; });
+    return q;
+  }
+
+  function activeModes(p) {
+    return MODES.filter(function (m) { return !!p[MODE_ON[m]]; });
   }
 
   /* Returns the earliest (most upstream) of two stages. */
@@ -147,6 +198,28 @@ var CD = window.CD || {};
     if (!a) return b;
     if (!b) return a;
     return STAGES.indexOf(a) < STAGES.indexOf(b) ? a : b;
+  }
+
+  /* Every setting the user can currently see, as the settings file records
+   * them: the shared block, then each mode that is switched on. */
+  function settingsList(p, shapeNames) {
+    var out = [];
+    SCHEMA.forEach(function (g) {
+      if (g.mode && !p[MODE_ON[g.mode]]) return;
+      g.controls.forEach(function (c) {
+        if (c.type === 'pair') {
+          out.push(['Node + link / Shape 1', shapeNames.node || 'circle (default)']);
+          out.push(['Node + link / Shape 2', shapeNames.link || 'circle (default)']);
+          return;
+        }
+        if (c.def === undefined) return;
+        var v = p[c.key];
+        if (typeof v === 'boolean') v = v ? 'on' : 'off';
+        else if (typeof v === 'number') v = fmt(v, c.step);
+        out.push([g.group + ' / ' + c.label, String(v)]);
+      });
+    });
+    return out;
   }
 
   function el(tag, cls, txt) {
@@ -164,15 +237,18 @@ var CD = window.CD || {};
 
     SCHEMA.forEach(function (g) {
       var sec = el('section', 'group');
-      var head = el('div', 'group-head');
-      head.appendChild(el('h2', null, g.group));
-      if (g.hint) head.appendChild(el('p', 'hint', g.hint));
-      sec.appendChild(head);
+      sec.dataset.mode = g.mode || '';
+      sec.appendChild(el('h2', null, g.group));
+      var body = el('div', 'group-body');
+      if (g.cols) body.style.gridTemplateColumns = 'repeat(' + g.cols + ', 1fr)';
+      sec.appendChild(body);
 
       g.controls.forEach(function (c) {
         var row = el('div', 'ctrl');
+        if (c.help) row.title = c.help;
 
         if (c.type === 'toggle') {
+          row.classList.add('ctrl-half');
           var lab = el('label', 'ctrl-toggle');
           var cb = el('input');
           cb.type = 'checkbox';
@@ -187,6 +263,7 @@ var CD = window.CD || {};
           refs[c.key] = { set: function (v) { cb.checked = !!v; } };
 
         } else if (c.type === 'color') {
+          row.classList.add('ctrl-half');
           var top = el('div', 'ctrl-top');
           top.appendChild(el('label', null, c.label));
           var ci = el('input', 'color');
@@ -200,73 +277,11 @@ var CD = window.CD || {};
           row.appendChild(top);
           refs[c.key] = { set: function (v) { ci.value = v; } };
 
-        } else if (c.type === 'segment') {
-          var opts = c.options;
-          row.appendChild(el('label', null, c.label));
-          var seg = el('div', 'shape-row');
-          opts.forEach(function (o) {
-            var b = el('button', 'shape-btn', o.label);
-            b.dataset.opt = o.key;
-            b.addEventListener('click', function () {
-              params[c.key] = o.key;
-              seg.querySelectorAll('.shape-btn').forEach(function (x) {
-                x.classList.toggle('on', x.dataset.opt === o.key);
-              });
-              onChange(c.stage);
-            });
-            if (params[c.key] === o.key) b.classList.add('on');
-            seg.appendChild(b);
-          });
-          row.appendChild(seg);
-          refs[c.key] = {
-            set: function (v) {
-              seg.querySelectorAll('.shape-btn').forEach(function (x) {
-                x.classList.toggle('on', x.dataset.opt === v);
-              });
-            }
-          };
-
-        } else if (c.type === 'shape') {
-          row.appendChild(el('label', null, c.label));
-          var wrap = el('div', 'shape-row');
-          var mk = function (name, text) {
-            var b = el('button', 'shape-btn', text);
-            b.dataset.shape = name;
-            b.addEventListener('click', function () {
-              params[c.key] = name;
-              wrap.querySelectorAll('.shape-btn').forEach(function (o) {
-                o.classList.toggle('on', o.dataset.shape === name);
-              });
-              onChange(c.stage);
-            });
-            if (params[c.key] === name) b.classList.add('on');
-            return b;
-          };
-          CD.SHAPE_TYPES.forEach(function (t) {
-            wrap.appendChild(mk(t, t.charAt(0).toUpperCase() + t.slice(1)));
-          });
-          var customBtn = mk('custom', 'Custom');
-          customBtn.classList.add('custom-btn');
-          customBtn.disabled = !CD.hasCustomShape();
-          wrap.appendChild(customBtn);
-          var nodesBtn = mk('nodes', 'Node + link');
-          nodesBtn.classList.add('custom-btn');
-          wrap.appendChild(nodesBtn);
-          row.appendChild(wrap);
-
-          var up = el('div', 'upload-row');
-          var upBtn = el('button', 'mini', 'Upload shape SVG');
-          upBtn.addEventListener('click', function () { hooks.pickShape(); });
-          up.appendChild(upBtn);
-          var upName = el('span', 'file-name', '');
-          up.appendChild(upName);
-          row.appendChild(up);
-
-          /* Two more slots, for the node/link pair. Either falls back to a
-           * plain circle until an SVG is loaded into it. */
-          var pairWrap = el('div', 'pair-uploads');
-          pairWrap.appendChild(el('p', 'help', 'Node + link: shape 1 lands every ' +
-            'Nth step along the line, shape 2 fills the run between.'));
+        } else if (c.type === 'pair') {
+          /* The one shape control, shared by all three modes: shape 1 lands
+           * every Nth step along a line, shape 2 fills the run between. Either
+           * falls back to a plain circle until an SVG is loaded into it. */
+          row.classList.add('ctrl-wide', 'ctrl-pair');
           var pairNames = {};
           CD.PAIR_SLOTS.forEach(function (slot, idx) {
             var prow = el('div', 'upload-row');
@@ -277,20 +292,10 @@ var CD = window.CD || {};
             var pname = el('span', 'file-name', 'circle');
             prow.appendChild(pname);
             pairNames[slot] = pname;
-            pairWrap.appendChild(prow);
+            row.appendChild(prow);
           });
-          row.appendChild(pairWrap);
-
           refs[c.key] = {
-            set: function (v) {
-              wrap.querySelectorAll('.shape-btn').forEach(function (o) {
-                o.classList.toggle('on', o.dataset.shape === v);
-              });
-            },
-            customLoaded: function (name) {
-              customBtn.disabled = false;
-              upName.textContent = name;
-            },
+            set: function () {},
             pairLoaded: function (slot, name) {
               if (pairNames[slot]) pairNames[slot].textContent = name;
             }
@@ -318,30 +323,18 @@ var CD = window.CD || {};
           };
         }
 
-        if (c.help) row.appendChild(el('p', 'help', c.help));
-        row.dataset.modes = c.modes ? c.modes.join(' ') : '';
-        sec.appendChild(row);
+        body.appendChild(row);
       });
 
       sections.push(sec);
       root.appendChild(sec);
     });
 
-    /* A control belonging to a layer is shown while that layer is on, and a
-     * group whose every control is hidden goes with it. Controls that list no
-     * layer — line spacing, the dot controls — serve both. */
+    /* A mode's group is only in the way while that mode is off. */
     function syncVisibility() {
       sections.forEach(function (sec) {
-        var shown = 0;
-        sec.querySelectorAll('.ctrl').forEach(function (r) {
-          var m = r.dataset.modes;
-          var vis = !m || m.split(' ').some(function (k) {
-            return k === 'edge' ? !!params.edgeLayer : !!params.surfaceLayer;
-          });
-          r.hidden = !vis;
-          if (vis) shown++;
-        });
-        sec.hidden = shown === 0;
+        var m = sec.dataset.mode;
+        sec.hidden = !!m && !params[MODE_ON[m]];
       });
     }
     syncVisibility();
@@ -367,7 +360,8 @@ var CD = window.CD || {};
   }
 
   CD.UI = {
-    SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED,
-    defaults: defaults, buildPanel: buildPanel, earliest: earliest
+    SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED, MODES: MODES, MODE_ON: MODE_ON,
+    defaults: defaults, buildPanel: buildPanel, earliest: earliest,
+    modeParams: modeParams, activeModes: activeModes, settingsList: settingsList
   };
 })(CD);

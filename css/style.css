@@ -24,7 +24,7 @@ html, body {
 
 body {
   display: grid;
-  grid-template-columns: 312px 1fr;
+  grid-template-columns: 344px 1fr;
   overflow: hidden;
 }
 
@@ -33,16 +33,27 @@ body.panel-hidden #panel { display: none; }
 
 /* ---------------------------------------------------------------- panel -- */
 
+/* The panel is a column that owns the window height: the loader at the top,
+ * the download at the bottom, and the controls in between taking whatever is
+ * left. Only the middle can ever scroll, so the one button a person is
+ * looking for at the end is always where they left it. */
 #panel {
   background: var(--panel);
   border-right: 1px solid var(--line);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  padding: 14px 14px 12px;
+}
+
+#controls {
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 18px 16px 28px;
+  padding-right: 2px;
 }
 
 .brand h1 {
-  margin: 0 0 4px;
+  margin: 0 0 8px;
   font-size: 15px;
   letter-spacing: 0.02em;
   font-weight: 600;
@@ -56,10 +67,8 @@ body.panel-hidden #panel { display: none; }
   margin-right: 8px;
   vertical-align: 1px;
 }
-.brand p { margin: 0 0 16px; color: var(--muted); font-size: 11.5px; }
 
-.io { display: grid; gap: 7px; margin-bottom: 22px; }
-.io-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.io { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin-bottom: 9px; }
 
 button {
   appearance: none;
@@ -80,38 +89,50 @@ button.primary:hover { background: #ff3a48; border-color: #ff3a48; }
 
 /* --------------------------------------------------------------- groups -- */
 
-.group { border-top: 1px solid var(--line); padding: 14px 0 4px; }
-.group-head { margin-bottom: 12px; }
+.group { border-top: 1px solid var(--line); padding: 7px 0 1px; }
 .group h2 {
-  margin: 0;
-  font-size: 10.5px;
+  margin: 0 0 5px;
+  font-size: 10px;
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--accent);
   font-weight: 600;
 }
-.hint { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
 
-.ctrl { margin-bottom: 14px; }
-.ctrl-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.ctrl label { font-size: 12px; color: var(--ink); }
+/* Two controls to a row. A slider is a label, a number and a track; at this
+ * width two of them sit side by side comfortably, and halving the row count
+ * is what lets every control in three modes fit the window at once. */
+.group-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+.ctrl { grid-column: span 1; margin-bottom: 3px; min-width: 0; }
+.ctrl-wide { grid-column: 1 / -1; }
+/* the two shape slots sit side by side, like every other pair of controls */
+.ctrl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.ctrl-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.ctrl label {
+  font-size: 11px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .val {
   font-variant-numeric: tabular-nums;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 0 4px;
+  flex: none;
 }
-.help { margin: 5px 0 0; font-size: 10.5px; color: var(--muted); line-height: 1.4; }
 
 input[type=range] {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 18px;
-  margin: 5px 0 0;
+  height: 14px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
 }
@@ -146,16 +167,15 @@ input[type=color] {
 .shape-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .shape-btn { padding: 5px 9px; font-size: 11px; border-radius: 5px; }
 .shape-btn.on { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
-.upload-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .mini { padding: 5px 9px; font-size: 11px; }
 .file-name {
   font-size: 10.5px; color: var(--muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 130px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
 
-.foot { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 6px; }
-.foot p { margin: 0 0 8px; font-size: 10.5px; color: var(--muted); line-height: 1.5; }
-.foot code { color: #b9b9c2; font-size: 10px; }
+.foot { border-top: 1px solid var(--line); padding-top: 9px; margin-top: 3px; }
+.foot button { width: 100%; }
+.foot p { margin: 6px 0 0; font-size: 10px; color: var(--muted); text-align: center; }
 
 /* ---------------------------------------------------------------- stage -- */
 
@@ -214,18 +234,12 @@ input[type=color] {
 #stats { font-variant-numeric: tabular-nums; }
 #status.error { color: var(--accent); }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   body { grid-template-columns: 1fr; grid-template-rows: 1fr auto; overflow: auto; }
-  #panel { order: 2; border-right: 0; border-top: 1px solid var(--line); max-height: 50vh; }
-  #stage { order: 1; min-height: 55vh; }
+  #panel { order: 2; border-right: 0; border-top: 1px solid var(--line); max-height: 52vh; }
+  #stage { order: 1; min-height: 52vh; }
 }
 
 /* node + link slots */
-.pair-uploads {
-  margin-top: 10px;
-  padding-top: 9px;
-  border-top: 1px dashed var(--line);
-}
-.pair-uploads .help { margin: 0 0 8px; }
-.pair-uploads .upload-row { margin-top: 6px; }
-.pair-slot { min-width: 68px; text-align: center; }
+.upload-row { display: flex; align-items: center; gap: 7px; margin: 0 0 3px; min-width: 0; }
+.pair-slot { min-width: 62px; text-align: center; }

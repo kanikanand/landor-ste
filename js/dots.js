@@ -27,7 +27,10 @@ var CD = window.CD || {};
     var p = ctx.params;
     var rng = ctx.rng;
 
-    var bandLimit = ctx.bandLimit || null;   // edge lines: tone gates the bands
+    /* Where a mark is allowed to exist. The surface renderer has always
+     * asked the silhouette mask; the edge and fingerprint renderers answer it
+     * differently, so they pass their own test in. */
+    var gate = ctx.gate || null;
 
     /* Node + link: shape 1 lands every Nth step along the line, shape 2 fills
      * the run between. Off unless the shape mode asks for it, and every branch
@@ -40,19 +43,17 @@ var CD = window.CD || {};
     var dots = [];
     var jitter = p.randomness;
     var spacingBase = Math.max(0.6, p.dotSpacing);
-    /* Edge marks keep their own size and spacing, so a fine surface halftone
-     * and a sparse run of marks along the silhouette can be on at once. */
-    var edgeSpacingBase = Math.max(0.6, p.edgeDotSpacing);
     var maxDots = p.maxDots;
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
       var line = lines[li];
       var pts = line.pts;
-      var band = line.band || 0;
-      /* Edge contours are evenly spaced along the line and gated by band;
-       * surface streamlines take their spacing from depth and are gated by the
-       * silhouette, as they always have. */
-      var isEdge = line.kind === 'edge';
+      /* An extracted contour — an edge or a fingerprint ridge — is a mark on
+       * a line in the picture plane, not a reading of a surface, so it is
+       * evenly spaced and evenly sized along its whole length. Surface
+       * streamlines take spacing, size and colour from depth, as they always
+       * have. */
+      var flat = line.kind === 'edge' || line.kind === 'fingerprint';
       if (!pts || pts.length < 4) continue;
 
       /* Normally each line starts on a random phase so the dots do not comb
@@ -82,12 +83,11 @@ var CD = window.CD || {};
           var d = depth.sample(fx, fy, 0);
 
           /* Size: on a surface streamline depth drives the base and size
-           * variation adds the scatter. An edge contour is a mark on the
-           * outline rather than a reading of the surface, so it takes one
-           * size along its whole length — otherwise the marks vanish exactly
-           * where the reference images put the most of them, in the darks. */
-          var base = isEdge
-            ? p.edgeDotSize
+           * variation adds the scatter. A flat contour takes one size along
+           * its whole length — otherwise its marks vanish exactly where the
+           * references put the most of them, in the darks. */
+          var base = flat
+            ? p.dotSize
             : p.dotSize * lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff));
           var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
           var size = base * vary;
@@ -96,8 +96,8 @@ var CD = window.CD || {};
            * viewer. Near dots are also the biggest, so the step is floored at
            * a little over one diameter — otherwise the densest, largest dots
            * fuse into a solid line and the halftone reads as fill. */
-          var localSpacing = isEdge
-            ? edgeSpacingBase
+          var localSpacing = flat
+            ? spacingBase
             : spacingBase * lerp(1.5, 0.68, d);
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
           localSpacing = Math.max(size * 2.15, localSpacing);
@@ -120,9 +120,7 @@ var CD = window.CD || {};
             }
           }
 
-          var alive = (isEdge && bandLimit)
-            ? (band + 1 <= bandLimit(fx, fy))
-            : (m > 0.5);
+          var alive = gate ? gate(fx, fy) : (m > 0.5);
 
           if (alive && size > 0.16) {
             /* Rotation follows the contour. With a flow field that is the
@@ -130,7 +128,7 @@ var CD = window.CD || {};
              * it is the line's own tangent — the same thing measured
              * directly. */
             var rot;
-            if (flow && !isEdge) {
+            if (flow && !flat) {
               var dir = CD.dirAt(flow, fx, fy);
               rot = Math.atan2(dir.y, dir.x);
             } else {
@@ -160,13 +158,11 @@ var CD = window.CD || {};
               px += ux * jt; py += uy * jt;
             }
 
-            /* Colour comes off the depth ramp, which is right for a dot lying
-             * on the surface. An edge mark is not on the surface — it is a
-             * mark on the outline — so it takes the near end of the ramp and
-             * holds one colour along the whole contour, instead of sinking
-             * into the background exactly where the darks put the most of
-             * them. */
-            var tint = isEdge ? 1 : d;
+            /* Colour comes off the depth ramp, which is right for a dot
+             * lying on the surface. A flat contour is not on the surface, so
+             * it takes the near end of the ramp and holds one colour along
+             * its whole length instead of sinking into the background. */
+            var tint = flat ? 1 : d;
 
             if (role === 'node') { lastNodeArc = arc; lastNodeSize = size; }
             dots.push({ x: px, y: py, s: size, r: rot, d: tint, role: role });

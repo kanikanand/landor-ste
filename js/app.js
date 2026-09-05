@@ -1,6 +1,13 @@
 /* ============================================================================
  * app.js — p5 sketch + pipeline orchestration.
  *
+ * Three modes read the same photograph and draw three different things from
+ * it. Each one carries its own threshold and contrast, so each gets its own
+ * depth field: the surface wants a soft, smoothed field it can run contours
+ * across, the edge wants a hard silhouette, the fingerprint wants only the
+ * ground the subject stands against. They then share one dot walker and one
+ * pair of shapes, and land in one list of dots.
+ *
  * Pipeline, in dependency order. A control only dirties its own stage and
  * everything downstream of it, so dragging a dot slider never re-traces the
  * contours and never rebuilds the depth field.
@@ -16,6 +23,7 @@ var CD = window.CD || {};
   var FIELD_MAX = 420;   // long side of the analysis grid
 
   var STAGES = CD.UI.STAGES;
+  var MODES = CD.UI.MODES;
 
   var state = {
     params: CD.UI.defaults(),
@@ -23,13 +31,19 @@ var CD = window.CD || {};
     srcName: 'sample',
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
-    dep: null, flow: null, edgeMask: null, sd: null, lines: [], dots: [],
+    px: null,            // the source resampled onto the analysis grid
+    deps: {},            // depth field per active mode
+    masks: {},           // silhouette per mode that needs one
+    flow: null,
+    lines: {},           // polylines per active mode
+    dots: [],
+    lineCount: 0,
     pendingShapeSlot: null,
+    shapeNames: {},
     ramp: null,
     dirty: 'depth',
     pendingFull: null,
     quality: 'full',
-    busy: false,
     timing: {}
   };
 
@@ -37,6 +51,10 @@ var CD = window.CD || {};
   var canvasEl = null;
   var ctx = null;
   var draftTimer = null, fullTimer = null;
+
+  function noise2D(x, y) {
+    return (typeof noise === 'function') ? noise(x, y) : 0.5;
+  }
 
   /* ==========================================================================
    * Source image
@@ -165,6 +183,10 @@ var CD = window.CD || {};
    * Pipeline stages
    * ========================================================================*/
 
+  /* Each active mode gets its own depth field, because each carries its own
+   * threshold and contrast. Two modes set to the same pair of values do the
+   * same work twice, which at this grid size is a couple of milliseconds and
+   * not worth the cache. */
   function stageDepth(p) {
     var fw = state.fieldW, fh = state.fieldH;
     var c = document.createElement('canvas');
@@ -173,80 +195,119 @@ var CD = window.CD || {};
     g.imageSmoothingEnabled = true;
     g.imageSmoothingQuality = 'high';
     g.drawImage(state.srcCanvas, 0, 0, fw, fh);
-    var px = g.getImageData(0, 0, fw, fh).data;
-    state.dep = CD.buildDepth(px, fw, fh, p);
+    state.px = g.getImageData(0, 0, fw, fh).data;
+
+    state.deps = {};
+    CD.UI.activeModes(p).forEach(function (mode) {
+      state.deps[mode] = CD.buildDepth(state.px, fw, fh, CD.UI.modeParams(p, mode));
+    });
   }
 
   function stageFlow(p) {
-    /* Edge contours take their direction from the extracted line's own
-     * tangent, so with the surface layer off there is no field to build. */
-    if (!p.surfaceLayer) { state.flow = null; return; }
-    state.flow = CD.buildFlow(state.dep, p, function (x, y) {
-      return (typeof noise === 'function') ? noise(x, y) : 0.5;
-    });
+    /* Only the surface renderer runs a flow field. The other two take their
+     * direction from the tangent of the contour they extracted. */
+    if (!p.surfaceOn || !state.deps.surface) { state.flow = null; return; }
+    state.flow = CD.buildFlow(state.deps.surface, CD.UI.modeParams(p, 'surface'), noise2D);
+  }
+
+  /* The silhouette a mode traces: the background flooded in from the frame,
+   * everything it cannot reach kept as the subject, specks dropped and holes
+   * filled. Falls back to the plain luminance cut if the flood is
+   * degenerate. */
+  function silhouette(mode, mp) {
+    var dep = state.deps[mode];
+    var subj = CD.subjectMask(dep.tone, mp) || dep.mask;
+    return CD.buildEdgeMask(subj, mp);
   }
 
   function stageLines(p) {
-    var lines = [];
+    state.lines = {};
+    state.masks = {};
 
-    if (p.edgeLayer) {
-      /* The edge silhouette is kept entirely separate from the surface mask:
-       * isolated to one subject, holes filled, feathered a little harder for
-       * tracing. The surface renderer keeps using the mask untouched, which
-       * is why the two layers can be on at once without either changing.
-       *
-       * Where it starts from is the Separation control. `subject` floods the
-       * background in from the frame and takes everything it cannot reach,
-       * so hair and a dark shirt stay part of the subject; `threshold` is the
-       * plain luminance cut, kept for images where that is what you want.
-       * A degenerate flood returns null and falls back to the cut. */
-      var src = null;
-      if (p.edgeSource === 'subject') src = CD.subjectMask(state.dep.tone, p);
-      state.edgeMask = CD.buildEdgeMask(src || state.dep.mask, p);
-      var built = CD.buildEdgeLines({
-        dep: { mask: state.edgeMask },
-        params: p,
-        fieldScale: state.fieldScale
-      });
-      state.sd = built.sd;
-      for (var k = 0; k < built.lines.length; k++) {
-        built.lines[k].kind = 'edge';
-        lines.push(built.lines[k]);
-      }
-    }
-
-    if (p.surfaceLayer) {
+    if (p.surfaceOn && state.deps.surface) {
+      var mp = CD.UI.modeParams(p, 'surface');
+      var dep = state.deps.surface;
       var tracer = new CD.Tracer({
         flow: state.flow,
-        depth: state.dep.depth,
-        mask: state.dep.mask,
+        depth: dep.depth,
+        mask: dep.mask,
         viewW: state.viewW, viewH: state.viewH,
         fieldScale: state.fieldScale,
-        params: p,
-        rng: CD.makeRng(p.seed)
+        params: mp,
+        rng: CD.makeRng(mp.seed)
       });
       /* The tracer yields bare polylines; the dot builder takes tagged ones. */
       var traced = tracer.run();
-      for (var j = 0; j < traced.length; j++) {
-        lines.push({ pts: traced[j], band: 0, kind: 'surface' });
-      }
+      var surf = [];
+      for (var j = 0; j < traced.length; j++) surf.push({ pts: traced[j], kind: 'surface' });
+      state.lines.surface = surf;
     }
 
-    state.lines = lines;
+    if (p.edgeOn && state.deps.edge) {
+      var emp = CD.UI.modeParams(p, 'edge');
+      state.masks.edge = silhouette('edge', emp);
+      var built = CD.buildEdgeLines({ mask: state.masks.edge, fieldScale: state.fieldScale });
+      var edge = [];
+      for (var k = 0; k < built.lines.length; k++) {
+        edge.push({ pts: built.lines[k].pts, kind: 'edge' });
+      }
+      state.lines.edge = edge;
+    }
+
+    if (p.fingerprintOn && state.deps.fingerprint) {
+      var fmp = CD.UI.modeParams(p, 'fingerprint');
+      state.masks.fingerprint = silhouette('fingerprint', fmp);
+      var ridges = CD.buildFingerprintLines({
+        mask: state.masks.fingerprint,
+        params: fmp,
+        fieldScale: state.fieldScale,
+        noise2D: noise2D
+      });
+      var fp = [];
+      for (var q = 0; q < ridges.lines.length; q++) {
+        fp.push({ pts: ridges.lines[q].pts, kind: 'fingerprint' });
+      }
+      state.lines.fingerprint = fp;
+    }
+
+    state.lineCount = MODES.reduce(function (n, m) {
+      return n + (state.lines[m] ? state.lines[m].length : 0);
+    }, 0);
+  }
+
+  /* Where each mode's marks are allowed to land. Surface passes nothing and
+   * gets the silhouette test it has always had; the edge draws its one line
+   * end to end; the fingerprint stays out in the background. */
+  function gateFor(mode) {
+    if (mode === 'edge') return function () { return true; };
+    if (mode === 'fingerprint') {
+      var m = state.masks.fingerprint;
+      return function (fx, fy) { return m.sample(fx, fy, 0) <= 0.5; };
+    }
+    return null;
   }
 
   function stageDots(p) {
-    state.dots = CD.buildDots({
-      lines: state.lines,
-      depth: state.dep.depth,
-      grad: state.dep.grad,
-      mask: state.dep.mask,
-      flow: state.flow,
-      fieldScale: state.fieldScale,
-      params: p,
-      rng: CD.makeRng(p.seed ^ 0x9e3779b9),
-      bandLimit: CD.makeBandLimit(state.dep.tone, p)
+    var all = [];
+    MODES.forEach(function (mode) {
+      var lines = state.lines[mode];
+      if (!lines || !lines.length) return;
+      var dep = state.deps[mode];
+      var mp = CD.UI.modeParams(p, mode);
+      var dots = CD.buildDots({
+        lines: lines,
+        depth: dep.depth,
+        grad: dep.grad,
+        mask: dep.mask,
+        flow: mode === 'surface' ? state.flow : null,
+        fieldScale: state.fieldScale,
+        params: mp,
+        rng: CD.makeRng(mp.seed ^ 0x9e3779b9),
+        gate: gateFor(mode)
+      });
+      for (var i = 0; i < dots.length; i++) all.push(dots[i]);
     });
+    state.dots = all;
   }
 
   function stageDraw() {
@@ -257,6 +318,9 @@ var CD = window.CD || {};
     ctx.save();
     ctx.fillStyle = p.background;
     ctx.fillRect(0, 0, state.viewW, state.viewH);
+    if (p.showImage && state.srcCanvas) {
+      ctx.drawImage(state.srcCanvas, 0, 0, state.viewW, state.viewH);
+    }
 
     /* Batch by colour bucket: one fillStyle change per bucket instead of one
      * per dot, which is the difference between a stutter and an instant
@@ -305,8 +369,11 @@ var CD = window.CD || {};
   function draftParams(p) {
     var q = {};
     Object.keys(p).forEach(function (k) { q[k] = p[k]; });
-    q.lineSpacing = p.lineSpacing * 1.8;
-    q.dotSpacing = p.dotSpacing * 1.5;
+    q.sLineSpacing = p.sLineSpacing * 1.8;
+    q.fSpacing = p.fSpacing * 1.8;
+    q.sDotSpacing = p.sDotSpacing * 1.5;
+    q.eDotSpacing = p.eDotSpacing * 1.5;
+    q.fDotSpacing = p.fDotSpacing * 1.5;
     q.maxPoints = Math.min(p.maxPoints, 220000);
     q.maxDots = Math.min(p.maxDots, 40000);
     q.maxLines = Math.min(p.maxLines, 1400);
@@ -368,45 +435,64 @@ var CD = window.CD || {};
   function updateStats(quality) {
     var e = $('#stats');
     if (!e) return;
-    e.textContent = state.lines.length.toLocaleString() + ' contours · ' +
+    e.textContent = state.lineCount.toLocaleString() + ' contours · ' +
       state.dots.length.toLocaleString() + ' dots · ' +
       Math.round(state.timing[quality] || 0) + ' ms' +
       (quality === 'draft' ? ' (preview)' : '');
   }
 
-  function exportSVG() {
-    if (!state.dots.length) { status('Nothing to export yet.', true); return; }
-    if (state.pendingFull || state.quality !== 'full') {
-      clearTimeout(fullTimer);
-      run('full');
+  /* The photograph, as the SVG has to carry it: JPEG unless the source has
+   * transparency to preserve. Only embedded when Show image is on, so the
+   * download holds exactly what the canvas shows. */
+  function imageDataURL() {
+    if (!state.srcCanvas) return null;
+    try {
+      return state.srcCanvas.toDataURL('image/jpeg', 0.88);
+    } catch (e) {
+      return null;
     }
+  }
+
+  function currentSVG() {
     var p = state.params;
-    var svg = CD.buildSVG({
+    return CD.buildSVG({
       width: state.viewW, height: state.viewH,
       background: p.background,
+      image: p.showImage ? imageDataURL() : null,
       dots: state.dots,
-      shapeType: p.shapeType,
       params: p,
       ramp: CD.makeRamp(p.colorFar, p.colorNear),
       colorGamma: p.colorGamma,
       title: state.srcName + ' — contour dots'
     });
-    CD.download(state.srcName + '-contour-dots.svg', svg);
-    status('Exported SVG · ' + (svg.length / 1048576).toFixed(2) + ' MB · ' +
-           state.dots.length.toLocaleString() + ' vector dots');
   }
 
-  function exportPNG() {
-    if (!canvasEl) return;
-    canvasEl.toBlob(function (blob) {
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = state.srcName + '-contour-dots.png';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-    }, 'image/png');
-    status('Exported PNG');
+  function settingsText() {
+    var rows = CD.UI.settingsList(state.params, state.shapeNames);
+    var lines = rows.map(function (r) {
+      return '["' + r[0] + '": "' + r[1] + '"]';
+    });
+    return lines.join('\n') + '\n';
+  }
+
+  /* One download: a folder holding the drawing and the settings that made
+   * it. A browser cannot hand over a directory, so it hands over the archive
+   * that unpacks into one. */
+  function exportBundle() {
+    if (!state.dots.length) { status('Nothing to export yet.', true); return; }
+    if (state.pendingFull || state.quality !== 'full') {
+      clearTimeout(fullTimer);
+      run('full');
+    }
+    var base = (state.srcName || 'contour-dots').replace(/[^\w.-]+/g, '-');
+    var svg = currentSVG();
+    var zip = CD.makeZip([
+      { name: base + '/' + base + '.svg', data: svg },
+      { name: base + '/' + base + '-settings.txt', data: settingsText() }
+    ]);
+    CD.downloadBlob(base + '.zip', zip);
+    status('Downloaded ' + base + '.zip · ' + (zip.size / 1048576).toFixed(2) + ' MB · ' +
+           state.dots.length.toLocaleString() + ' vector dots');
   }
 
   function wireChrome() {
@@ -421,27 +507,17 @@ var CD = window.CD || {};
 
     shapeInput.addEventListener('change', function () {
       var f = shapeInput.files[0];
-      var slot = state.pendingShapeSlot;
+      var slot = state.pendingShapeSlot || 'node';
       state.pendingShapeSlot = null;
       shapeInput.value = '';
       if (!f) return;
       var fr = new FileReader();
       fr.onload = function () {
         try {
-          var shape = CD.shapeFromSVG(fr.result, f.name);
-          if (slot) {
-            CD.setPairShape(slot, shape);
-            state.params.shapeType = 'nodes';
-            if (ui.refs.shapeType.pairLoaded) ui.refs.shapeType.pairLoaded(slot, f.name);
-            ui.refs.shapeType.set('nodes');
-            status('Shape ' + (slot === 'node' ? '1' : '2') + ' set from ' + f.name);
-          } else {
-            CD.setCustomShape(shape);
-            state.params.shapeType = 'custom';
-            if (ui.refs.shapeType.customLoaded) ui.refs.shapeType.customLoaded(f.name);
-            ui.refs.shapeType.set('custom');
-            status('Dot shape set from ' + f.name);
-          }
+          CD.setPairShape(slot, CD.shapeFromSVG(fr.result, f.name));
+          state.shapeNames[slot] = f.name;
+          if (ui.refs.shapePair.pairLoaded) ui.refs.shapePair.pairLoaded(slot, f.name);
+          status('Shape ' + (slot === 'node' ? '1' : '2') + ' set from ' + f.name);
           markDirty('draw');
         } catch (e) {
           status(e.message, true);
@@ -451,13 +527,7 @@ var CD = window.CD || {};
       fr.readAsText(f);
     });
 
-    $('#exportSvg').addEventListener('click', exportSVG);
-    $('#exportPng').addEventListener('click', exportPNG);
-
-    $('#reseed').addEventListener('click', function () {
-      state.params.seed = (Math.random() * 0xffffffff) >>> 0;
-      markDirty('lines');
-    });
+    $('#download').addEventListener('click', exportBundle);
 
     $('#reset').addEventListener('click', function () {
       /* Copy the defaults *into* the live object. Every control closure holds
@@ -472,7 +542,7 @@ var CD = window.CD || {};
       status('Controls reset');
     });
 
-    /* drag & drop: images set the source, SVGs set the dot shape */
+    /* drag & drop: images set the source, SVGs fill the node slot */
     var stage = $('#stage');
     ['dragenter', 'dragover'].forEach(function (ev) {
       stage.addEventListener(ev, function (e) {
@@ -488,9 +558,7 @@ var CD = window.CD || {};
       var f = e.dataTransfer.files[0];
       if (!f) return;
       if (/svg/.test(f.type) || /\.svg$/i.test(f.name)) {
-        /* A drop still means the single Custom shape, as in v1; the two
-         * node/link slots are only ever filled by their own buttons. */
-        state.pendingShapeSlot = null;
+        state.pendingShapeSlot = 'node';
         var dt = new DataTransfer();
         dt.items.add(f);
         shapeInput.files = dt.files;
@@ -526,13 +594,13 @@ var CD = window.CD || {};
         markDirty(stage);
       },
       { pickShape: function (slot) {
-          state.pendingShapeSlot = slot || null;
+          state.pendingShapeSlot = slot || 'node';
           document.getElementById('shapeInput').click();
         } });
 
     wireChrome();
     setSource(makeSampleImage(), 'sample');
-    status('Drop an image anywhere, or load one. Drop an SVG to set the dot shape.');
+    status('Drop an image anywhere, or load one. Drop an SVG to set shape 1.');
   };
 
   window.windowResized = function () { /* canvas is CSS-scaled; nothing to do */ };

@@ -4,12 +4,12 @@ A standalone p5.js prototype that turns a photograph into a field of oriented
 dots flowing along the contours of its implied 3D form, and exports the result
 as a fully editable SVG.
 
-**This is v1 with two things added and nothing changed.** The surface renderer
-below — the depth field, the flow field, the streamline tracing and every
-decision about where a dot goes and how big it is — is byte-for-byte v1. Added
-alongside it: an **edge renderer** that traces the subject's outline, and a
-**node + link** dot mode that alternates two uploaded shapes along a line. See
-[What v5 adds](#what-v5-adds).
+**Three modes read the same photograph and draw three different things from
+it.** *Surface* is byte-for-byte v1 — the depth field, the flow field, the
+streamline tracing and every decision about where a dot goes and how big it
+is. *Edge* draws one line around the subject. *Fingerprint* fills the ground
+the subject stands against with ridges. Any combination can be on at once.
+See [Three modes](#three-modes).
 
 ![pipeline: depth field, flow field, streamlines, oriented dots](docs/preview.png)
 
@@ -28,7 +28,7 @@ npx http-server -p 8080 .
 ```
 
 Drop an image anywhere on the canvas to load it. Drop an `.svg` to use its
-outline as the dot shape.
+outline as shape 1.
 
 It opens on a built-in sample so there is something to turn the knobs against
 straight away. That sample is deliberately a *shaded render* rather than a
@@ -87,65 +87,103 @@ banding of the reference, rather than the clumping and crossing you get from
 seeding at random. Separation is depth-modulated, so near regions of the
 surface carry more lines than far ones.
 
-## What v5 adds
+## Three modes
 
-### Edge renderer
+Each mode is a separate reading of the picture, so each carries its own
+**Threshold** and **Contrast** — and therefore builds its own depth field. The
+surface wants a soft, smoothed field it can run contours across; the edge
+wants a hard silhouette; the fingerprint wants only the ground behind the
+subject. They then share one dot walker, one pair of shapes and one canvas.
 
-The **Mode** switch chooses *Surface* (everything below, unchanged), *Edge*, or
-*Both* — which generates each and draws them together.
+### Surface
 
-Edge mode rests on the **signed distance** to the subject's silhouette,
-positive inside and negative out in the background. Its zero level *is* the
-edge and every other level is a parallel offset, so one contour and eight
-stepping outward are the same operation at different levels. Contours are
-extracted exactly, by marching squares, rather than approximated.
+Everything under [The idea](#the-idea): depth contours wrapping the form,
+oriented dots whose size, spacing and colour all come off the depth field.
+This is v1, unchanged.
 
-- **Number of lines** — how many contours step away from the edge.
-- **Spread** — which side of the edge they step towards.
-- **Shading** — how much tonality thins the stack. At 0 every band is drawn
-  everywhere, so the contours are pure geometric offsets of the silhouette. At
-  1 the darks keep the full stack and the lights fall back to the outline.
-- **Largest region only** — traces one subject and fills its enclosed holes,
-  so an eye socket dipping past the threshold does not grow its own contours.
+- **Threshold**, **Contrast** — the photograph, before it becomes a surface.
+- **Depth** — displaces each dot along the depth gradient. This is the relief
+  that makes the bands bulge towards the viewer rather than read as a flat
+  contour map.
+- **Smoothing** — turns a noisy photograph into a continuous surface. Contours
+  need this.
+- **Line spacing**, **Dot size**, **Dot spacing**, **Node scale**.
 
-The silhouette it traces is derived from the threshold mask but held
-separately: isolated, hole-filled, and feathered a little harder for tracing.
-The surface renderer keeps using the mask exactly as v1 built it, which is why
-turning any of this on cannot move a single surface dot.
+### Edge
 
-The tonality that drives Shading is taken from the raw luminance and is never
-inverted — **Invert depth** says which side of the threshold is the subject,
-which is a different question from which parts of the picture are dark.
+One line, where the subject leaves the background. It rests on the **signed
+distance** to the silhouette, positive inside and negative out; its zero level
+*is* the edge, so the contour falls out of the field closed and ordered rather
+than being chased around a mask pixel by pixel.
 
-### Node + link
+Finding that silhouette is the whole problem, and a luminance threshold cannot
+do it: on a portrait against a mid-grey wall a threshold selects a *band of
+brightness* — the lit face, without the dark hair and without the dark shirt.
+So the background is found instead, as the region that touches the frame and
+stays the tone the frame is, and everything the flood cannot reach is the
+subject, however light or dark. Two conditions hold the flood in: it may not
+stray far from the border's own median tone, and it may not cross a cell where
+the tone is turning sharply — at the rim of a lit face the face and the wall
+are the same grey, and only the steepness tells them apart.
 
-A shape mode alongside the built-ins and the single Custom slot. It adds two
-more slots: **shape 1** lands every Nth step along a line and **shape 2** fills
-the run between, so a contour reads as marked points joined by a dotted rule
-rather than an undifferentiated stream of dots. Either falls back to a plain
-circle until an SVG is loaded into it.
+Where it leaks anyway the silhouette can come apart, so a morphological
+closing heals thin breaks and the isolation step keeps every substantial part
+rather than only the largest: a head cut off its shoulders is still the
+subject.
 
-- **Node every** — steps between shape 1. At 1 every dot is shape 1.
-- **Node scale** — how much bigger shape 1 is than shape 2.
+- **Separation** — how far the background may drift from the frame's own tone
+  before the subject starts.
+- **Dot size**, **Dot spacing**, **Node scale** — larger by default, because
+  an edge is a single line and its marks carry it alone.
+
+### Fingerprint
+
+A fingerprint is a set of continuous ridges that never cross, run roughly
+parallel, and bend around whatever is in their way — which is the description
+of the iso-lines of a scalar field. So the ridges are extracted, not drawn:
+
+```
+phi = signedDistance(subject) + swirl * noise
+```
+
+The distance term gives clean offsets of the silhouette; the noise term warps
+them into whorls, at a frequency low enough that a whole run of neighbouring
+ridges bends together instead of breaking into islands. Because they are level
+sets of one function, two ridges cannot touch. Only the background side is
+drawn — the subject is left to the photograph.
+
+- **Separation** — the same flood that the edge uses, deciding where the
+  ridges stop.
+- **Ridge spacing**, **Swirl**, **Dot size**, **Dot spacing**, **Node scale**.
+
+## Node + link
+
+The one shape control, shared by all three modes. **Shape 1** lands every Nth
+step along a line and **shape 2** fills the run between, so a contour reads as
+marked points joined by a dotted rule rather than an undifferentiated stream
+of dots. Either falls back to a plain circle until an SVG is loaded into it.
+
+- **Node every** — steps between shape 1. At 1 every dot is shape 1. Shared.
+- **Node scale** — how much bigger shape 1 is than shape 2. Per mode.
 
 Each line starts on a node rather than a random phase, so an open contour
 terminates with one instead of cutting off mid-run, and links are suppressed
 within about a node radius of the node just placed.
 
-Uploaded SVGs are now kept as a list of parts, each with its own fill, stroke,
+Uploaded SVGs are kept as a list of parts, each with its own fill, stroke,
 stroke-width and fill-rule, rather than merged into one filled path. Merging
 loses exactly what makes a shape a shape: a subpath declared `fill-rule="evenodd"`
 to punch a hole fills solid, and art defined by stroke with no fill becomes a
-blob. A built-in is a single filled part, so this is identical to v1 for every
-shape that ships with the tool.
+blob.
 
-### The guarantee
+## The guarantee
 
-Surface output is verified against v1 by dumping every dot from both builds and
-comparing field by field — position, size, rotation and depth. Across eight
-parameter regimes (defaults, heavy smoothing, dense, jittered, blended flow,
-sparse, a non-circle shape, inverted), roughly 63,000 dots, every value is
-identical. In Both mode the surface layer still yields v1's exact contour count.
+Surface output is verified against the previous build — itself verified
+byte-for-byte against v1 — by dumping every dot from both and comparing field
+by field: position, size, rotation and depth. Across eight parameter regimes
+on two images, sixteen for sixteen, every value is identical. Nothing the
+other two modes do can move a surface dot: they never share a depth field, a
+mask, a flow field or a random stream.
 
 ## The dot primitive
 
@@ -157,65 +195,65 @@ once as a path in a unit box:
 drawDot(ctx, x, y, size, rotation, type)
 ```
 
-| `type`     | geometry                                   |
-|------------|--------------------------------------------|
-| `circle`   | rotationally symmetric; the fast path       |
-| `square`   | turns with the contour                      |
-| `diamond`  | turns with the contour                      |
-| `line`     | a capsule — the most directional of the set |
-| `custom`   | any uploaded SVG, normalised to the unit box |
+The two slots hold whatever you upload; each falls back to a circle, which is
+rotationally symmetric and takes the fast path. Uploading an SVG reads its
+`path` / `circle` / `rect` / `ellipse` / `polygon` / `polyline` / `line`
+elements, measures the result with `getBBox()`, and fits it into the unit box
+preserving aspect ratio. The canvas renderer and the SVG exporter consume that
+one definition, so what you export is exactly what you saw.
 
-Uploading an SVG flattens its `path` / `circle` / `rect` / `ellipse` /
-`polygon` / `polyline` / `line` elements into a single path, measures it with
-`getBBox()`, and fits it into the same unit box preserving aspect ratio. The
-canvas renderer and the SVG exporter consume that one definition, so what you
-export is exactly what you saw.
+## Download
 
-## SVG export
+One button, at the end of the panel. It writes a `.zip` that unpacks into a
+folder holding two files: the drawing as SVG, and the settings that produced
+it as plain text, one per line —
 
-`Export SVG` writes real vector geometry, not a traced bitmap:
+```
+["Surface / Line spacing": "9.0"]
+["Edge / Separation": "0.12"]
+```
 
-- The shape is emitted **once** into `<defs>`, and each dot is a `<use>`
+Only the settings you can currently see are recorded: the shared block, then
+each mode that is switched on.
+
+The SVG is real vector geometry, not a traced bitmap:
+
+- Each shape is emitted **once** into `<defs>`, and each dot is a `<use>`
   carrying its own `translate / rotate / scale`. Swapping that single
   definition restyles every dot in the file at once.
 - Circles take a shorter path — a plain `<circle>` — which is smaller and
   friendlier to downstream tools.
 - Dots are grouped into colour buckets as `<g fill>` groups rather than
   carrying a fill attribute each.
+- The photograph rides along only when **Show image** is on, so the file holds
+  exactly what the canvas showed.
 
 Every dot arrives in Illustrator or Figma as an individual editable object.
-Export fidelity is verified against the canvas at 99.3–99.8% pixel overlap
-across all shape types; the remainder is antialiasing on dot edges.
-
-`Export PNG` writes the canvas as-is.
+Export fidelity is verified against the canvas at 99.9% ink overlap within one
+pixel; the remainder is antialiasing on dot edges, which the two renderers
+shade slightly differently.
 
 ## Controls
 
-**Image** — Threshold (carves the negative space), Contrast, Invert depth
-(for a subject lit dark-on-light).
+The panel is a column that owns the window height: the loader at the top, the
+download at the bottom, and the controls between them. A mode's own group only
+appears while that mode is on, and controls sit two to a row, so all three
+modes' controls fit at once without scrolling.
 
-**Depth** — Depth exaggeration (displaces each dot along the depth gradient;
-this is the relief that makes the bands bulge towards the viewer rather than
-read as a flat contour map), Depth contrast, Depth smoothing (turns a noisy
-photograph into a continuous surface — contours need this).
+**Picture** — Show image (the photograph behind the dots, and in the exported
+SVG), Background, Far colour, Near colour.
 
-**Render** — Mode: Surface, Edge or Both. Controls belonging to one renderer
-are hidden in the other.
+**Modes** — Surface, Edge, Fingerprint. Independent; any combination.
 
-**Contours (Surface)** — Line density, Line spacing, Flow strength (0 =
-straight lines at the base angle, 1 = pure depth contours), Flow distortion,
-Base angle, Flow coherence.
+**Node + link** — Shape 1, Shape 2, Node every.
 
-**Contours (Edge)** — Number of lines, Line spacing, Spread, Shading, Shading
-falloff, Largest region only.
+**Surface / Edge / Fingerprint** — each mode's own group, as above.
 
-**Dots** — Shape (including Node + link with its two slots), Node every, Node
-scale, Dot size, Size variation, Size falloff, Dot spacing, Randomness.
-
-**Colour** — Background, Far colour, Near colour, Colour falloff.
-
-Dot spacing is floored at a little over one dot diameter, so the largest,
-densest dots cannot fuse into a solid line and collapse the halftone into fill.
+Held constant rather than exposed, at the values v1 shipped with: depth
+contrast, line density, flow strength, flow distortion, base angle, flow
+coherence, size variation, size falloff, randomness and colour falloff. Dot
+spacing is floored at a little over one dot diameter, so the largest, densest
+dots cannot fuse into a solid line and collapse the halftone into fill.
 
 ## Getting a good result from a photograph
 
@@ -230,8 +268,9 @@ black work best.
   silhouette is where you want it.
 - **Flow strength** below about 0.5 is where the piece stops being a contour
   map and starts being a striped halftone; both are useful.
-- If the subject is dark against a light ground, turn on **Invert depth**
-  first — nothing else will behave until the near/far sense is right.
+- For **Edge** and **Fingerprint**, Separation is the control that matters:
+  raise it until the background is fully claimed, and stop before it starts
+  eating into dark hair or a dark shirt.
 
 Where a photograph's brightness genuinely disagrees with its geometry — a dark
 iris on a lit face, a specular highlight in a crease — the contours will follow
@@ -262,15 +301,17 @@ index.html            markup + script order
 css/style.css         tool chrome
 js/core.js            Field container (bilinear sampling, separable blur),
                       exact Euclidean distance transform, signed distance,
-                      connected-region isolation and hole filling, math
+                      region isolation, hole filling, morphological closing
 js/field.js           depth field, gradient, flow field
 js/streamlines.js     evenly-spaced streamline tracer + spatial hash
 js/isolines.js        marching squares: iso-contours as linked polylines
-js/edge.js            signed-distance bands and the tone gate
+js/edge.js            the silhouette contour
+js/fingerprint.js     ridges in the background
 js/shapes.js          the dot primitive, drawDot, SVG shape upload
 js/dots.js            streamlines -> oriented dots, colour ramp
 js/svgexport.js       vector export
-js/ui.js              declarative control schema + panel
+js/zip.js             minimal ZIP writer, for the download bundle
+js/ui.js              declarative control schema + panel, per-mode parameters
 js/app.js             p5 sketch, pipeline orchestration, I/O
 vendor/p5.min.js      p5.js 1.9.4
 ```

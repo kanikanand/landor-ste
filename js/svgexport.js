@@ -26,7 +26,7 @@ var CD = window.CD || {};
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  /* opts: {width, height, background, dots, shapeType, ramp, colorGamma,
+  /* opts: {width, height, background, image, dots, ramp, colorGamma,
    *        params, title, buckets} */
   function buildSVG(opts) {
     var w = opts.width, h = opts.height;
@@ -41,6 +41,13 @@ var CD = window.CD || {};
       'width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">');
     out.push('<title>' + esc(opts.title || 'Contour dot render') + '</title>');
     out.push('<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="' + opts.background + '"/>');
+    /* The photograph rides along only when it is on screen, so the file holds
+     * exactly what the canvas showed. */
+    if (opts.image) {
+      out.push('<image x="0" y="0" width="' + w + '" height="' + h +
+               '" preserveAspectRatio="none" xlink:href="' + opts.image +
+               '" href="' + opts.image + '"/>');
+    }
 
     /* Shapes go into <defs> on demand as dots reference them. One shape for
      * every mode except node/link, which places two. */

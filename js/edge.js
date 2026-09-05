@@ -1,87 +1,37 @@
 /* ============================================================================
- * edge.js — contours of the separation between subject and background.
+ * edge.js — the one line where the subject leaves the background.
  *
- * The whole renderer here rests on one field: the SIGNED DISTANCE to the
- * silhouette, positive inside the subject and negative out in the background.
- * Its zero level *is* the edge, and every other level is a clean parallel
- * offset from it, so "one contour" and "six contours stepping outward" are the
- * same operation at different levels rather than separate code paths.
+ * Everything here rests on the SIGNED DISTANCE to the silhouette, positive
+ * inside the subject and negative out in the background. Its zero level *is*
+ * the edge, so the contour comes out of the field directly rather than being
+ * chased around the mask pixel by pixel, and it comes out closed and ordered,
+ * which is what the dot walker needs.
  *
- * How many of those contours actually appear at a given place is decided by
- * the picture's own tonality: dark regions earn the full stack of bands and
- * read as shading, light regions keep only band 0 and read as a single line
- * tracing the subject. That is the gradient in the reference images — a lone
- * outline through the bright areas thickening into dense banding in the darks.
+ * Only that zero level is drawn. Offset bands stepping away from the edge
+ * were a way of shading the darks, and shading is the surface renderer's job;
+ * an edge is a single line around the subject or it is not an edge.
  * ==========================================================================*/
 var CD = window.CD || {};
 
 (function (CD) {
   'use strict';
 
-  var clamp = CD.clamp;
-
-  /* How many bands the tonality supports at this point. Band 0 is always
-   * allowed, so the subject never loses its outline. */
-  function makeBandLimit(tone, params) {
-    var n = Math.max(1, Math.round(params.lineCount));
-    var amount = clamp(params.shading, 0, 1);
-    var falloff = Math.max(0.05, params.shadingFalloff);
-    /* Scale by n, not n-1. Dividing the darkness range into (n-1) steps means
-     * the outermost band only appears at darkness exactly 1 — pure black after
-     * blur and contrast, which almost nothing is — so at two lines the second
-     * one never showed at all. Scaling by n leaves headroom, so every band is
-     * reachable within the tones a real photograph actually contains. */
-    /* Shading is now how much tonality *thins* the stack, not whether there is
-     * one. At 0 every band is drawn everywhere, so the contours are pure
-     * geometric offsets of the silhouette — object against background, with no
-     * tonal opinion. At 1 the darks keep the full stack and the lights fall
-     * back to the outline alone. How many contours there are is Number of
-     * lines; this only says how much the picture gets to take away. */
-    return function (fx, fy) {
-      var darkness = 1 - clamp(tone.sample(fx, fy, 0), 0, 1);
-      var keep = 1 - amount + amount * Math.pow(darkness, falloff);
-      return 1 + n * keep;
-    };
-  }
-
-  /* ctx: { dep, params, fieldScale }
-   * Returns { lines: [{pts, band}], sd } with pts in view pixels. */
+  /* ctx: { mask, fieldScale }
+   * Returns { lines: [{pts}], sd } with pts in view pixels. */
   function buildEdgeLines(ctx) {
-    var dep = ctx.dep, p = ctx.params, s = ctx.fieldScale;
+    var s = ctx.fieldScale;
+    var sd = CD.signedDistance(ctx.mask, 0.5);
 
-    var sd = CD.signedDistance(dep.mask, 0.5);
-
-    var n = Math.max(1, Math.round(p.lineCount));
-    var step = Math.max(0.4, p.edgeSpacing * s);   // view px -> grid cells
-    var spread = p.lineSpread;
+    var polys = CD.isoContours(sd, 0);
     var lines = [];
-
-    for (var k = 0; k < n; k++) {
-      var off = k * step;
-      var levels;
-      if (k === 0) {
-        levels = [0];                       // the silhouette itself
-      } else if (spread === 'inside') {
-        levels = [off];
-      } else if (spread === 'outside') {
-        levels = [-off];
-      } else {
-        levels = [off, -off];               // both ways off the edge
-      }
-
-      for (var li = 0; li < levels.length; li++) {
-        var polys = CD.isoContours(sd, levels[li]);
-        for (var q = 0; q < polys.length; q++) {
-          var pts = polys[q];
-          for (var m = 0; m < pts.length; m++) pts[m] /= s;   // grid -> view
-          lines.push({ pts: pts, band: k });
-        }
-      }
+    for (var q = 0; q < polys.length; q++) {
+      var pts = polys[q];
+      for (var m = 0; m < pts.length; m++) pts[m] /= s;   // grid -> view
+      lines.push({ pts: pts });
     }
 
     return { lines: lines, sd: sd };
   }
 
   CD.buildEdgeLines = buildEdgeLines;
-  CD.makeBandLimit = makeBandLimit;
 })(CD);
