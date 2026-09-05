@@ -52,7 +52,7 @@ var CD = window.CD || {};
     var sd = CD.signedDistance(dep.mask, 0.5);
 
     var n = Math.max(1, Math.round(p.lineCount));
-    var step = Math.max(0.4, p.lineSpacing * s);   // view px -> grid cells
+    var step = Math.max(0.4, p.edgeSpacing * s);   // view px -> grid cells
     var spread = p.lineSpread;
     var lines = [];
 

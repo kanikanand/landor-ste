@@ -178,9 +178,9 @@ var CD = window.CD || {};
   }
 
   function stageFlow(p) {
-    /* Edge mode takes its direction from the extracted contour's own tangent,
-     * so there is no field to build. */
-    if (p.renderMode === 'edge') { state.flow = null; return; }
+    /* Edge contours take their direction from the extracted line's own
+     * tangent, so with the surface layer off there is no field to build. */
+    if (!p.surfaceLayer) { state.flow = null; return; }
     state.flow = CD.buildFlow(state.dep, p, function (x, y) {
       return (typeof noise === 'function') ? noise(x, y) : 0.5;
     });
@@ -189,11 +189,20 @@ var CD = window.CD || {};
   function stageLines(p) {
     var lines = [];
 
-    if (p.renderMode !== 'surface') {
-      /* The edge silhouette is derived from the mask but kept separate from
-       * it: isolated to one subject, holes filled, feathered a little harder
-       * for tracing. The surface renderer keeps using the mask untouched. */
-      state.edgeMask = CD.buildEdgeMask(state.dep.mask, p);
+    if (p.edgeLayer) {
+      /* The edge silhouette is kept entirely separate from the surface mask:
+       * isolated to one subject, holes filled, feathered a little harder for
+       * tracing. The surface renderer keeps using the mask untouched, which
+       * is why the two layers can be on at once without either changing.
+       *
+       * Where it starts from is the Separation control. `subject` floods the
+       * background in from the frame and takes everything it cannot reach,
+       * so hair and a dark shirt stay part of the subject; `threshold` is the
+       * plain luminance cut, kept for images where that is what you want.
+       * A degenerate flood returns null and falls back to the cut. */
+      var src = null;
+      if (p.edgeSource === 'subject') src = CD.subjectMask(state.dep.tone, p);
+      state.edgeMask = CD.buildEdgeMask(src || state.dep.mask, p);
       var built = CD.buildEdgeLines({
         dep: { mask: state.edgeMask },
         params: p,
@@ -206,7 +215,7 @@ var CD = window.CD || {};
       }
     }
 
-    if (p.renderMode !== 'edge') {
+    if (p.surfaceLayer) {
       var tracer = new CD.Tracer({
         flow: state.flow,
         depth: state.dep.depth,
@@ -451,9 +460,13 @@ var CD = window.CD || {};
     });
 
     $('#reset').addEventListener('click', function () {
-      var seed = state.params.seed;
-      state.params = CD.UI.defaults();
-      state.params.seed = seed;
+      /* Copy the defaults *into* the live object. Every control closure holds
+       * a reference to it, so replacing it left them all writing to an object
+       * nothing reads any more — after one Reset the whole panel went dead. */
+      var def = CD.UI.defaults();
+      Object.keys(def).forEach(function (k) {
+        if (k !== 'seed') state.params[k] = def[k];
+      });
       ui.syncAll();
       markDirty('depth');
       status('Controls reset');

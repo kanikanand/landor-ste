@@ -205,6 +205,109 @@ var CD = window.CD || {};
     return { x: Math.cos(a), y: Math.sin(a), a: a };
   }
 
+  /* Where the subject stops and the background begins.
+   *
+   * A single luminance threshold cannot answer that question. On a portrait
+   * against a mid-grey wall it selects a *brightness band* — the lit face,
+   * without the dark hair and without the dark shirt — so the edge contours
+   * ended up ringing the cheekbones instead of the head. That is the
+   * "picking the darkest regions rather than object/background separation"
+   * problem, and no threshold value fixes it, because the subject is not a
+   * band of brightness.
+   *
+   * The background is, though: it is the region that touches the frame and
+   * stays the tone the frame is. So it is found by flooding inwards from the
+   * border, and everything the flood cannot reach is the subject, however
+   * light or dark it happens to be. Two conditions hold the flood in:
+   *
+   *   - it may never stray more than `tolerance` from the border's own tone,
+   *     which stops it walking down a gradient into the hair, and
+   *   - it may not cross a cell where the tone is turning sharply, which is
+   *     what stops it leaking through the rim of a lit face — there the face
+   *     and the wall are the same grey, and only the steepness tells them
+   *     apart.
+   *
+   * Seeds are border pixels near the border's *median* tone, so a dark shirt
+   * running off the bottom of the frame is not itself a seed. Returns null
+   * when the answer is degenerate — nothing found, or everything — and the
+   * caller falls back to the threshold mask.
+   */
+  function subjectMask(tone, p) {
+    var w = tone.w, h = tone.h, n = w * h;
+    var tn = tone.data;
+    var i, x, y;
+
+    /* the border's own tone, by median: robust to a subject that reaches it */
+    var edgeVals = [];
+    for (x = 0; x < w; x++) { edgeVals.push(tn[x]); edgeVals.push(tn[(h - 1) * w + x]); }
+    for (y = 0; y < h; y++) { edgeVals.push(tn[y * w]); edgeVals.push(tn[y * w + w - 1]); }
+    edgeVals.sort(function (a, b) { return a - b; });
+    var med = edgeVals[edgeVals.length >> 1];
+
+    var tol = clamp(p.edgeTolerance, 0.01, 0.9);
+    var lim = Math.max(0.012, tol * 0.35);   // steepest slope the flood may cross
+
+    /* Where the picture turns sharply is where the subject starts. A wall
+     * shades across a whole frame, so its slope per cell is tiny; the rim of
+     * a face climbs as fast as the blur allows. That difference separates
+     * them even when their tones nearly meet, which a tone band alone cannot
+     * do — at the rim the face and the wall are the same grey. */
+    var slope = new Float32Array(n);
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var x0 = x > 0 ? x - 1 : 0, x1 = x < w - 1 ? x + 1 : w - 1;
+        var y0 = y > 0 ? y - 1 : 0, y1 = y < h - 1 ? y + 1 : h - 1;
+        var gx = (tn[y * w + x1] - tn[y * w + x0]) * 0.5;
+        var gy = (tn[y1 * w + x] - tn[y0 * w + x]) * 0.5;
+        slope[y * w + x] = Math.hypot(gx, gy);
+      }
+    }
+
+    var seen = new Uint8Array(n);
+    var stack = new Int32Array(n);
+    var sp = 0;
+
+    function seed(q) {
+      if (!seen[q] && Math.abs(tn[q] - med) <= tol && slope[q] <= lim) {
+        seen[q] = 1; stack[sp++] = q;
+      }
+    }
+    for (x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
+    for (y = 0; y < h; y++) { seed(y * w); seed(y * w + w - 1); }
+    if (sp === 0) return null;
+
+    function grow(q) {
+      if (seen[q]) return;
+      if (Math.abs(tn[q] - med) > tol) return;   // stray too far from the frame's tone
+      if (slope[q] > lim) return;                // or across an edge
+      seen[q] = 1; stack[sp++] = q;
+    }
+    while (sp > 0) {
+      var q = stack[--sp];
+      var qx = q % w, qy = (q / w) | 0;
+      if (qx > 0) grow(q - 1);
+      if (qx < w - 1) grow(q + 1);
+      if (qy > 0) grow(q - w);
+      if (qy < h - 1) grow(q + w);
+    }
+
+    var subject = new CD.Field(w, h, 1);
+    var sm = subject.data;
+    var area = 0;
+    for (i = 0; i < n; i++) { sm[i] = seen[i] ? 0 : 1; area += sm[i]; }
+
+    var frac = area / n;
+    if (frac < 0.004 || frac > 0.985) return null;   // nothing, or everything
+
+    /* Heal the wedges the flood pushes in wherever subject and background
+     * happen to share a tone. Four cells on a 420-cell grid is about one per
+     * cent of the frame: enough to reconnect a neck the flood cut through,
+     * too little to round off anything that is really part of the outline. */
+    subject = CD.closeMask(subject, Math.max(2, Math.round(Math.min(w, h) * 0.012)));
+    subject.blur(1, 1);
+    return subject;
+  }
+
   /* The silhouette the edge renderer traces.
    *
    * Kept separate from `dep.mask` on purpose: the surface renderer's mask is
@@ -215,8 +318,10 @@ var CD = window.CD || {};
    */
   function buildEdgeMask(mask, p) {
     var m = mask;
-    if (p.largestRegion) {
-      m = CD.largestRegion(m, 0.5);
+    if (p.isolateSubject) {
+      /* Keep the main body and anything within reach of its size — a head cut
+       * off its shoulders is still the subject — and drop the specks. */
+      m = CD.mainRegions(m, 0.5, 0.12);
       m = CD.fillEnclosed(m, 0.5);
     } else {
       m = m.clone();
@@ -227,6 +332,7 @@ var CD = window.CD || {};
 
   CD.buildDepth = buildDepth;
   CD.buildEdgeMask = buildEdgeMask;
+  CD.subjectMask = subjectMask;
   CD.buildFlow = buildFlow;
   CD.dirAt = dirAt;
   CD.contrastCurve = contrastCurve;

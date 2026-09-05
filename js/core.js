@@ -189,20 +189,52 @@ var CD = window.CD || {};
     return out;
   }
 
-  /* Keep only the largest 4-connected region of the mask.
+  /* Morphological closing: dilate by `r` cells, then erode by the same.
    *
-   * A global luminance threshold calls *any* dark patch the subject, so a
-   * graded sky that dips below the threshold in one corner grows its own
-   * silhouette and the contours go wandering off across the background.
-   * Keeping the largest region alone is what makes the boundary mean
-   * "subject against background" rather than "wherever the luminance
-   * happens to cross". */
-  function largestRegion(mask, iso) {
+   * A silhouette found by flooding the background is never quite clean. Where
+   * the subject and the background pass through the same tone — the shadowed
+   * side of a jaw against a grey wall — the flood pushes a thin wedge in, and
+   * one wedge across a neck is enough to cut a head off its shoulders.
+   * Closing heals breaks and
+   * notches narrower than `r` and leaves everything wider than that exactly
+   * where it was, which is the difference between an outline and half of one.
+   */
+  function closeMask(mask, r) {
+    var w = mask.w, h = mask.h, n = w * h, i;
+    if (r < 1) return mask;
+
+    /* dilate: every cell within r of the subject joins it */
+    var inv = new Field(w, h, 1);
+    for (i = 0; i < n; i++) inv.data[i] = mask.data[i] > 0.5 ? 0 : 1;
+    var toSubject = distanceInside(inv, 0.5);
+    var grown = new Field(w, h, 1);
+    for (i = 0; i < n; i++) {
+      grown.data[i] = (mask.data[i] > 0.5 || toSubject.data[i] <= r) ? 1 : 0;
+    }
+
+    /* erode by the same radius, so the outline returns to where it was */
+    var toEdge = distanceInside(grown, 0.5);
+    var out = new Field(w, h, 1);
+    for (i = 0; i < n; i++) out.data[i] = toEdge.data[i] > r ? 1 : 0;
+    return out;
+  }
+
+  /* Keep the largest 4-connected region of the mask and anything comparable
+   * to it, dropping the specks.
+   *
+   * Largest-region alone is too sharp an instrument for a silhouette found by
+   * flooding: where the subject and the background share a tone the flood
+   * pushes in far enough to cut a head off its shoulders, and keeping only
+   * the biggest piece then throws the head away and traces the shirt. A part
+   * still worth a good fraction of the largest is part of the subject; a
+   * fleck of background that dipped past the threshold is not.
+   */
+  function mainRegions(mask, iso, minFraction) {
     var w = mask.w, h = mask.h, n = w * h;
-    var label = new Int32Array(n);      // 0 = unvisited
+    var label = new Int32Array(n);
     var stack = new Int32Array(n);
-    var best = 0, bestSize = 0, next = 0;
-    var i;
+    var sizes = [0];
+    var next = 0, i;
 
     for (i = 0; i < n; i++) {
       if (label[i] !== 0 || mask.data[i] <= iso) continue;
@@ -219,12 +251,18 @@ var CD = window.CD || {};
         if (qy > 0 && label[q - w] === 0 && mask.data[q - w] > iso) { label[q - w] = next; stack[sp++] = q - w; }
         if (qy < h - 1 && label[q + w] === 0 && mask.data[q + w] > iso) { label[q + w] = next; stack[sp++] = q + w; }
       }
-      if (size > bestSize) { bestSize = size; best = next; }
+      sizes[next] = size;
     }
+    if (!next) return mask;
 
-    if (!best) return mask;
+    var biggest = 0;
+    for (i = 1; i <= next; i++) if (sizes[i] > biggest) biggest = sizes[i];
+    var floor = biggest * minFraction;
+
     var out = new Field(w, h, 1);
-    for (i = 0; i < n; i++) out.data[i] = (label[i] === best) ? mask.data[i] : 0;
+    for (i = 0; i < n; i++) {
+      out.data[i] = (label[i] > 0 && sizes[label[i]] >= floor) ? mask.data[i] : 0;
+    }
     return out;
   }
 
@@ -264,7 +302,8 @@ var CD = window.CD || {};
 
   CD.distanceInside = distanceInside;
   CD.signedDistance = signedDistance;
-  CD.largestRegion = largestRegion;
+  CD.mainRegions = mainRegions;
+  CD.closeMask = closeMask;
   CD.fillEnclosed = fillEnclosed;
   CD.clamp = clamp;
   CD.lerp = lerp;

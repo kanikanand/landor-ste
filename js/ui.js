@@ -12,17 +12,14 @@ var CD = window.CD || {};
 
   var STAGES = ['depth', 'flow', 'lines', 'dots', 'draw'];
 
-  var MODES = [
-    { key: 'surface', label: 'Surface' },
-    { key: 'edge', label: 'Edge' },
-    { key: 'both', label: 'Both' }
-  ];
-
   var SCHEMA = [
     {
-      group: 'Render', hint: 'Surface fills the form. Edge traces its outline.',
+      group: 'Render', hint: 'Two independent layers. Either, or both at once.',
       controls: [
-        { key: 'renderMode', label: 'Mode', type: 'mode', def: 'surface', stage: 'flow' }
+        { key: 'surfaceLayer', label: 'Surface contours', type: 'toggle', def: true, stage: 'flow',
+          help: 'Streamlines of the flow field, wrapping the form.' },
+        { key: 'edgeLayer', label: 'Edge contours', type: 'toggle', def: false, stage: 'lines',
+          help: 'Offset contours of the silhouette, banding into the darks.' }
       ]
     },
     {
@@ -49,30 +46,52 @@ var CD = window.CD || {};
     {
       group: 'Contours', hint: 'Field 2. Flow runs along the iso-depth lines.',
       controls: [
-        { key: 'lineCount', label: 'Number of lines', min: 1, max: 14, step: 1, def: 6, stage: 'lines',
-          modes: ['edge', 'both'],
-          help: 'Contours stepping away from the subject edge. The first is the silhouette itself.' },
-        { key: 'lineSpread', label: 'Spread', type: 'spread', def: 'both', stage: 'lines',
-          modes: ['edge', 'both'],
-          help: 'Which side of the edge the extra contours step towards.' },
-        { key: 'shading', label: 'Shading', min: 0, max: 1, step: 0.01, def: 0, stage: 'dots',
-          modes: ['edge', 'both'],
-          help: 'How much tonality thins the stack. At 0 every band is drawn everywhere.' },
-        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'dots',
-          modes: ['edge', 'both'],
-          help: 'Higher confines the shading to the deepest darks.' },
-        { key: 'largestRegion', label: 'Largest region only', type: 'toggle', def: true, stage: 'lines',
-          modes: ['edge', 'both'],
-          help: 'Traces one subject and fills its enclosed holes. Affects the edge silhouette only — the surface renderer keeps the mask exactly as it was.' },
-        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines', modes: ['surface', 'both'] },
-        { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines' },
-        { key: 'flowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow', modes: ['surface', 'both'],
+        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines', modes: ['surface'] },
+        { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines', modes: ['surface'] },
+        { key: 'flowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow', modes: ['surface'],
           help: '0 = straight lines at the base angle, 1 = pure depth contours.' },
-        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow', modes: ['surface', 'both'] },
-        { key: 'flowAngle', label: 'Base angle', min: 0, max: 180, step: 1, def: 0, stage: 'flow', modes: ['surface', 'both'],
+        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow', modes: ['surface'] },
+        { key: 'flowAngle', label: 'Base angle', min: 0, max: 180, step: 1, def: 0, stage: 'flow', modes: ['surface'],
           help: 'Direction the lines fall back to where the surface is flat.' },
-        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow', modes: ['surface', 'both'],
+        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow', modes: ['surface'],
           help: 'Diffuses direction into flat regions so lines stay continuous.' }
+      ]
+    },
+    {
+      group: 'Edge', hint: 'The line where the subject leaves the background.',
+      controls: [
+        { key: 'edgeSource', label: 'Separation', type: 'segment', def: 'subject', stage: 'lines',
+          modes: ['edge'],
+          options: [{ key: 'subject', label: 'Subject' }, { key: 'threshold', label: 'Threshold' }],
+          help: 'Subject floods the background in from the frame and keeps everything it cannot reach, so dark hair and a dark shirt stay part of the figure. Threshold is the plain luminance cut.' },
+        { key: 'edgeTolerance', label: 'Separation tolerance', min: 0.02, max: 0.6, step: 0.01, def: 0.12, stage: 'lines',
+          modes: ['edge'],
+          help: 'How far that flood may stray from the frame\'s own tone before it stops.' },
+        { key: 'isolateSubject', label: 'Isolate subject', type: 'toggle', def: true, stage: 'lines',
+          modes: ['edge'],
+          help: 'Drops stray specks and fills enclosed holes, while keeping every substantial part of the figure — separation can cut a head off its shoulders, and both are still the subject. Affects the silhouette only; the surface renderer keeps the mask exactly as it was.' },
+        { key: 'lineCount', label: 'Number of lines', min: 1, max: 14, step: 1, def: 7, stage: 'lines',
+          modes: ['edge'],
+          help: 'Contours stepping away from the edge. The first is the silhouette itself.' },
+        { key: 'edgeSpacing', label: 'Contour spacing', min: 2, max: 60, step: 0.5, def: 11, stage: 'lines',
+          modes: ['edge'],
+          help: 'Distance between those contours, in pixels.' },
+        { key: 'lineSpread', label: 'Spread', type: 'segment', def: 'inside', stage: 'lines',
+          modes: ['edge'],
+          options: [{ key: 'both', label: 'Both' }, { key: 'inside', label: 'Inside' },
+                    { key: 'outside', label: 'Outside' }],
+          help: 'Which side of the edge the extra contours step towards.' },
+        { key: 'shading', label: 'Shading', min: 0, max: 1, step: 0.01, def: 0.7, stage: 'dots',
+          modes: ['edge'],
+          help: 'How much tonality thins the stack: an outline alone through the lights, the full stack in the darks. At 0 every contour is drawn everywhere.' },
+        { key: 'shadingFalloff', label: 'Shading falloff', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'dots',
+          modes: ['edge'],
+          help: 'Higher confines the shading to the deepest darks.' },
+        { key: 'edgeDotSize', label: 'Edge dot size', min: 0.3, max: 14, step: 0.1, def: 2.6, stage: 'dots',
+          modes: ['edge'],
+          help: 'Edge marks are one size along the whole contour — they describe the outline, not the surface — so they have their own size and spacing rather than depth\'s.' },
+        { key: 'edgeDotSpacing', label: 'Edge dot spacing', min: 1.5, max: 40, step: 0.25, def: 9, stage: 'dots',
+          modes: ['edge'] }
       ]
     },
     {
@@ -181,12 +200,8 @@ var CD = window.CD || {};
           row.appendChild(top);
           refs[c.key] = { set: function (v) { ci.value = v; } };
 
-        } else if (c.type === 'mode' || c.type === 'spread') {
-          var opts = c.type === 'mode' ? MODES : [
-            { key: 'both', label: 'Both' },
-            { key: 'inside', label: 'Inside' },
-            { key: 'outside', label: 'Outside' }
-          ];
+        } else if (c.type === 'segment') {
+          var opts = c.options;
           row.appendChild(el('label', null, c.label));
           var seg = el('div', 'shape-row');
           opts.forEach(function (o) {
@@ -312,14 +327,17 @@ var CD = window.CD || {};
       root.appendChild(sec);
     });
 
-    /* Controls belonging to one renderer are hidden in the other, and a group
-     * whose every control is hidden goes with them. */
+    /* A control belonging to a layer is shown while that layer is on, and a
+     * group whose every control is hidden goes with it. Controls that list no
+     * layer — line spacing, the dot controls — serve both. */
     function syncVisibility() {
       sections.forEach(function (sec) {
         var shown = 0;
         sec.querySelectorAll('.ctrl').forEach(function (r) {
           var m = r.dataset.modes;
-          var vis = !m || m.split(' ').indexOf(params.renderMode) >= 0;
+          var vis = !m || m.split(' ').some(function (k) {
+            return k === 'edge' ? !!params.edgeLayer : !!params.surfaceLayer;
+          });
           r.hidden = !vis;
           if (vis) shown++;
         });
@@ -349,7 +367,7 @@ var CD = window.CD || {};
   }
 
   CD.UI = {
-    SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED, MODES: MODES,
+    SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED,
     defaults: defaults, buildPanel: buildPanel, earliest: earliest
   };
 })(CD);

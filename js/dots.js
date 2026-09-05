@@ -40,6 +40,9 @@ var CD = window.CD || {};
     var dots = [];
     var jitter = p.randomness;
     var spacingBase = Math.max(0.6, p.dotSpacing);
+    /* Edge marks keep their own size and spacing, so a fine surface halftone
+     * and a sparse run of marks along the silhouette can be on at once. */
+    var edgeSpacingBase = Math.max(0.6, p.edgeDotSpacing);
     var maxDots = p.maxDots;
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
@@ -78,8 +81,14 @@ var CD = window.CD || {};
           var m = mask.sample(fx, fy, 0);
           var d = depth.sample(fx, fy, 0);
 
-          /* size: depth drives the base, size variation adds the scatter */
-          var base = p.dotSize * lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff));
+          /* Size: on a surface streamline depth drives the base and size
+           * variation adds the scatter. An edge contour is a mark on the
+           * outline rather than a reading of the surface, so it takes one
+           * size along its whole length — otherwise the marks vanish exactly
+           * where the reference images put the most of them, in the darks. */
+          var base = isEdge
+            ? p.edgeDotSize
+            : p.dotSize * lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff));
           var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
           var size = base * vary;
 
@@ -87,7 +96,9 @@ var CD = window.CD || {};
            * viewer. Near dots are also the biggest, so the step is floored at
            * a little over one diameter — otherwise the densest, largest dots
            * fuse into a solid line and the halftone reads as fill. */
-          var localSpacing = isEdge ? spacingBase : spacingBase * lerp(1.5, 0.68, d);
+          var localSpacing = isEdge
+            ? edgeSpacingBase
+            : spacingBase * lerp(1.5, 0.68, d);
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
           localSpacing = Math.max(size * 2.15, localSpacing);
 
@@ -119,7 +130,7 @@ var CD = window.CD || {};
              * it is the line's own tangent — the same thing measured
              * directly. */
             var rot;
-            if (flow) {
+            if (flow && !isEdge) {
               var dir = CD.dirAt(flow, fx, fy);
               rot = Math.atan2(dir.y, dir.x);
             } else {
@@ -149,8 +160,16 @@ var CD = window.CD || {};
               px += ux * jt; py += uy * jt;
             }
 
+            /* Colour comes off the depth ramp, which is right for a dot lying
+             * on the surface. An edge mark is not on the surface — it is a
+             * mark on the outline — so it takes the near end of the ramp and
+             * holds one colour along the whole contour, instead of sinking
+             * into the background exactly where the darks put the most of
+             * them. */
+            var tint = isEdge ? 1 : d;
+
             if (role === 'node') { lastNodeArc = arc; lastNodeSize = size; }
-            dots.push({ x: px, y: py, s: size, r: rot, d: d, role: role });
+            dots.push({ x: px, y: py, s: size, r: rot, d: tint, role: role });
             if (dots.length >= maxDots) break;
           }
           idx++;
