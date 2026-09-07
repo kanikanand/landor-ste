@@ -89,9 +89,9 @@ button.primary:hover { background: #ff3a48; border-color: #ff3a48; }
 
 /* --------------------------------------------------------------- groups -- */
 
-.group { border-top: 1px solid var(--line); padding: 7px 0 1px; }
+.group { border-top: 1px solid var(--line); padding: 5px 0 0; }
 .group h2 {
-  margin: 0 0 5px;
+  margin: 0 0 4px;
   font-size: 10px;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -119,9 +119,9 @@ button.primary:hover { background: #ff3a48; border-color: #ff3a48; }
 .group-body {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 12px;
+  gap: 2px 12px;
 }
-.ctrl { grid-column: span 1; margin-bottom: 3px; min-width: 0; }
+.ctrl { grid-column: span 1; margin-bottom: 2px; min-width: 0; }
 .ctrl-wide { grid-column: 1 / -1; }
 /* the two shape slots sit side by side, like every other pair of controls */
 .ctrl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
@@ -255,5 +255,5 @@ input[type=color] {
 }
 
 /* node + link slots */
-.upload-row { display: flex; align-items: center; gap: 7px; margin: 0 0 3px; min-width: 0; }
+.upload-row { display: flex; align-items: center; gap: 7px; margin: 0 0 2px; min-width: 0; }
 .pair-slot { min-width: 62px; text-align: center; }

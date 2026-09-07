@@ -37,7 +37,7 @@ var CD = window.CD || {};
    * three sets of them exist. */
   var MODE_KEYS = {
     surface: {
-      threshold: 'sThreshold', imageContrast: 'sContrast',
+      threshold: 'sThreshold', imageContrast: 'sContrast', invert: 'sInvert',
       depthExaggeration: 'sDepth', depthContrast: 'sDepthContrast',
       depthSmoothing: 'sSmoothing',
       lineDensity: 'sLineDensity', lineSpacing: 'sLineSpacing',
@@ -48,12 +48,12 @@ var CD = window.CD || {};
       randomness: 'sRandomness', nodeScale: 'sNodeScale'
     },
     edge: {
-      threshold: 'eThreshold', imageContrast: 'eContrast',
+      threshold: 'eThreshold', imageContrast: 'eContrast', invert: 'eInvert',
       edgeTolerance: 'eTolerance',
       dotSize: 'eDotSize', dotSpacing: 'eDotSpacing', nodeScale: 'eNodeScale'
     },
     fingerprint: {
-      threshold: 'fThreshold', imageContrast: 'fContrast',
+      threshold: 'fThreshold', imageContrast: 'fContrast', invert: 'fInvert',
       edgeTolerance: 'fTolerance', ridgeSpacing: 'fSpacing', swirl: 'fSwirl',
       dotSize: 'fDotSize', dotSpacing: 'fDotSpacing', nodeScale: 'fNodeScale'
     }
@@ -100,6 +100,8 @@ var CD = window.CD || {};
         { key: 'sThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
           help: 'Everything below this is negative space — pure background, no dots.' },
         { key: 'sContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
+        { key: 'sInvert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
+          help: 'Use when the subject is lit dark-on-light. Says which side of the\n                 threshold is the subject.' },
         { key: 'sDepth', label: 'Depth', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots',
           help: 'Displaces each dot along the depth gradient. This is the relief.' },
         { key: 'sDepthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth',
@@ -129,6 +131,8 @@ var CD = window.CD || {};
       controls: [
         { key: 'eThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth' },
         { key: 'eContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
+        { key: 'eInvert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
+          help: 'Use when the subject is lit dark-on-light. Says which side of the\n                 threshold is the subject.' },
         { key: 'eTolerance', label: 'Separation', min: 0.02, max: 0.6, step: 0.01, def: 0.12, stage: 'lines',
           help: 'How far the background may drift from the frame\'s own tone before the subject starts.' },
         { key: 'eDotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 3.2, stage: 'dots' },
@@ -141,6 +145,8 @@ var CD = window.CD || {};
       controls: [
         { key: 'fThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth' },
         { key: 'fContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
+        { key: 'fInvert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
+          help: 'Use when the subject is lit dark-on-light. Says which side of the\n                 threshold is the subject.' },
         { key: 'fTolerance', label: 'Separation', min: 0.02, max: 0.6, step: 0.01, def: 0.12, stage: 'lines',
           help: 'Where the ridges stop: the flood that finds the ground the subject stands against.' },
         { key: 'fSpacing', label: 'Ridge spacing', min: 4, max: 60, step: 0.5, def: 16, stage: 'lines' },
@@ -158,7 +164,6 @@ var CD = window.CD || {};
    * fingerprint never shape — they read a depth field they do not sculpt and
    * run no flow field at all — plus the safety limits and the seed. */
   var FIXED = {
-    invert: false,
     depthContrast: 1.6,
     /* only the surface renderer displaces along the depth gradient */
     depthExaggeration: 0,

@@ -212,12 +212,25 @@ var CD = window.CD || {};
 
   /* The silhouette a mode traces: the background flooded in from the frame,
    * everything it cannot reach kept as the subject, specks dropped and holes
-   * filled. Falls back to the plain luminance cut if the flood is
-   * degenerate. */
+   * filled. Falls back to the plain luminance cut if the flood is degenerate.
+   *
+   * Invert swaps which side of that separation is the subject. It has to be
+   * applied here rather than left to the depth field, because the flood reads
+   * tonality, which is never inverted — Invert says which side of the
+   * threshold is the subject, and that is a different question from which
+   * parts of the picture are dark. On the fallback path the luminance cut has
+   * already answered it, so the flip is not applied twice. */
   function silhouette(mode, mp) {
     var dep = state.deps[mode];
-    var subj = CD.subjectMask(dep.tone, mp) || dep.mask;
-    return CD.buildEdgeMask(subj, mp);
+    var flood = CD.subjectMask(dep.tone, mp);
+    if (!flood) return CD.buildEdgeMask(dep.mask, mp);
+
+    /* Flip the *finished* silhouette, not the raw flood. Isolating and
+     * hole-filling a flipped flood fills the subject in as a hole in the
+     * background and loses it; flipping afterwards gives the exact
+     * complement, so the fingerprint's ridges cover the whole figure. */
+    var m = CD.buildEdgeMask(flood, mp);
+    return mp.invert ? CD.invertMask(m, 0.5) : m;
   }
 
   function stageLines(p) {

@@ -266,6 +266,15 @@ var CD = window.CD || {};
     return out;
   }
 
+  /* Swap inside for outside. */
+  function invertMask(mask, iso) {
+    var out = new Field(mask.w, mask.h, 1);
+    for (var i = 0; i < mask.w * mask.h; i++) {
+      out.data[i] = mask.data[i] > iso ? 0 : 1;
+    }
+    return out;
+  }
+
   /* Fill background regions that do not reach the border.
    *
    * With no blur on the depth field, any interior shadow that dips past the
@@ -303,6 +312,7 @@ var CD = window.CD || {};
   CD.distanceInside = distanceInside;
   CD.signedDistance = signedDistance;
   CD.mainRegions = mainRegions;
+  CD.invertMask = invertMask;
   CD.closeMask = closeMask;
   CD.fillEnclosed = fillEnclosed;
   CD.clamp = clamp;

@@ -101,8 +101,9 @@ Everything under [The idea](#the-idea): depth contours wrapping the form,
 oriented dots whose size, spacing and colour all come off the depth field.
 This is v1, unchanged.
 
-- **Threshold**, **Contrast**, **Depth contrast** — the photograph, before and
-  as it becomes a surface.
+- **Threshold**, **Contrast**, **Invert depth**, **Depth contrast** — the
+  photograph, before and as it becomes a surface. Invert says which side of
+  the threshold is the subject, for a subject lit dark-on-light.
 - **Depth** — displaces each dot along the depth gradient. This is the relief
   that makes the bands bulge towards the viewer rather than read as a flat
   contour map.
@@ -142,8 +143,12 @@ closing heals thin breaks and the isolation step keeps every substantial part
 rather than only the largest: a head cut off its shoulders is still the
 subject.
 
-- **Separation** — how far the background may drift from the frame's own tone
-  before the subject starts.
+- **Threshold**, **Contrast**, **Separation** — Separation is how far the
+  background may drift from the frame's own tone before the subject starts.
+- **Invert depth** — swaps which side of the separation is the subject. A
+  boundary is the same curve from either side, so this does not move the edge
+  line; it decides which side gets its specks dropped and its holes filled,
+  and it drives the fallback when the flood cannot find a background at all.
 - **Dot size**, **Dot spacing**, **Node scale** — larger by default, because
   an edge is a single line and its marks carry it alone.
 
@@ -163,8 +168,12 @@ ridges bends together instead of breaking into islands. Because they are level
 sets of one function, two ridges cannot touch. Only the background side is
 drawn — the subject is left to the photograph.
 
-- **Separation** — the same flood that the edge uses, deciding where the
-  ridges stop.
+- **Threshold**, **Contrast**, **Separation** — the same flood that the edge
+  uses, deciding where the ridges stop.
+- **Invert depth** — puts the ridges *on* the figure instead of the ground.
+  The silhouette is flipped once it is finished rather than before, because
+  isolating and hole-filling a flipped flood fills the subject in as a hole in
+  the background and loses it.
 - **Ridge spacing**, **Swirl**, **Dot size**, **Dot spacing**, **Node scale**.
 
 ## Node + link
@@ -254,10 +263,11 @@ shade slightly differently.
 
 The panel is a column that owns the window height: the loader at the top, the
 download at the bottom, and the controls between them. A mode's own group only
-appears while that mode is on, and controls sit two to a row. Click any group
-heading to fold it — with all three modes on the full set is taller than a
-laptop window, and folding is what keeps the panel the height of the screen
-without taking controls away to get there.
+appears while that mode is on, and controls sit two to a row. One mode, or
+two, fits the window. Click any group heading to fold it — with all three
+modes on the full set is taller than a laptop window, and folding is what
+keeps the panel the height of the screen without taking controls away to get
+there.
 
 **Picture** — Show image (the photograph behind the dots, and in the exported
 SVG; off by default, so the opening view is v1's), Background, Far colour,
@@ -269,9 +279,9 @@ Near colour.
 
 **Surface / Edge / Fingerprint** — each mode's own group, as above.
 
-Held constant rather than exposed: **Invert depth** and **Colour falloff**,
-and — for the edge and fingerprint modes, which sculpt no depth field and run
-no flow field — the surface controls that would mean nothing to them. Dot
+Held constant rather than exposed: **Colour falloff**, and — for the edge and
+fingerprint modes, which sculpt no depth field and run no flow field — the
+surface controls that would mean nothing to them. Dot
 spacing is floored at a little over one dot diameter, so the largest, densest
 dots cannot fuse into a solid line and collapse the halftone into fill.
 
@@ -321,7 +331,7 @@ index.html            markup + script order
 css/style.css         tool chrome
 js/core.js            Field container (bilinear sampling, separable blur),
                       exact Euclidean distance transform, signed distance,
-                      region isolation, hole filling, morphological closing
+                      region isolation, hole filling, closing, inversion
 js/field.js           depth field, gradient, flow field
 js/streamlines.js     evenly-spaced streamline tracer + spatial hash
 js/isolines.js        marching squares: iso-contours as linked polylines
