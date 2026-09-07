@@ -197,6 +197,45 @@ wander; a lattice reads as a straight halftone there and holds still. Size,
 colour and relief still come from depth and rotation still comes from flow, so
 the two modes sit in the same picture without disagreeing.
 
+## Keeping the lines intact
+
+Two things displace a dot away from the contour it was placed on, and both
+used to push it *sideways* — which is the one direction where a difference is
+maximally visible. A line survives being moved a long way; what destroys it is
+neighbouring dots being moved by different amounts.
+
+**Relief.** Depth exaggeration used to read the raw depth gradient once per
+dot, with a magnitude that saturated as `min(1, |grad D| * 14)`. On a
+photograph that swings from nothing to full over a couple of pixels, so two
+dots a spacing apart on the same contour got shoved by different amounts, and
+the line tore. Measured on a photographic depth field at low smoothing — which
+is exactly what the precision settings above ask for — the worst 1% of
+neighbouring pairs differed by **137% of the mean displacement**: effectively
+kicked in opposite directions. On a mathematically smooth dome the same
+measurement reads a hundredth of that, which is why the flaw hides in synthetic
+tests and shows up on real work.
+
+It is now a field. Direction still comes from the gradient, but magnitude comes
+from **depth** — which is very nearly constant along a contour, because a
+contour *is* an iso-depth line — and the whole field is smoothed by **Relief
+coherence** before anything samples it. At the default the worst-1% figure
+drops to 35%, a 3.9× reduction, while the mean displacement is unchanged: the
+relief survives, only the incoherence goes.
+
+Because the relief now applies across the whole surface instead of spiking at
+edges, the same slider value bites roughly ten times harder on average. Depth
+exaggeration's default drops from 6 to 3 to match.
+
+**Randomness.** The jitter was split 0.55 across the contour and 0.35 along it,
+under a comment claiming the split kept lines legible — it did the opposite.
+Sliding a dot forwards along the line it is already drawing is nearly
+invisible; sliding it sideways is what breaks the line up. At the default
+randomness of 0.12 the old split more than doubled a line's measured wobble,
+from 0.11 to 0.28. **Jitter along** now sets the balance and defaults to 0.75
+in favour of along: the same randomness now measures 0.13, indistinguishable
+from no randomness at all, while the variation in dot *spacing* — the part
+that actually stops the field looking mechanical — is untouched.
+
 ## Depth mapping
 
 Depth is one number, and there are three ways to spend it: the dot's **size**,
@@ -285,17 +324,19 @@ position / angle / softness, Edge dissolve.
 **Image** — Depth floor (where the relief starts; no longer carves the
 silhouette), Contrast, Invert depth (for a subject lit dark-on-light).
 
-**Depth** — Depth exaggeration (displaces each dot along the depth gradient;
-this is the relief that makes the bands bulge towards the viewer rather than
-read as a flat contour map), Depth contrast, Depth smoothing (turns a noisy
-photograph into a continuous surface — contours need this).
+**Depth** — Depth exaggeration (shifts each dot along the relief field; this
+is what makes the bands bulge towards the viewer rather than read as a flat
+contour map), Relief coherence (how far that field is smoothed before it is
+applied), Depth contrast, Depth smoothing (turns a noisy photograph into a
+continuous surface — contours need this).
 
 **Contours** — Line density, Line spacing, Flow strength (0 = straight lines
 at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
 Flow coherence.
 
 **Dots** — Grid fill, Shape, Dot size, Size variation, Size falloff, Dot
-spacing, Randomness.
+spacing, Randomness, Jitter along (how much of that randomness runs along the
+contour rather than across it).
 
 **Depth mapping** — Depth → size, Depth → colour, Depth → opacity, Tint from
 image.
@@ -335,7 +376,9 @@ smoothing 10. For a clean render rather than a noisy photograph:
 | Silhouette cleanup | 0 | a render has no edge noise to settle |
 | Depth smoothing | 2–4 | keeps panel lines in the gradient |
 | Flow coherence | 1–3 | diffuses direction without smearing it |
-| Depth exaggeration | 0 | stops dots sliding off their own contour |
+| Depth exaggeration | 0–3 | safe now, but 0 is still the sharpest |
+| Relief coherence | 10+ | keeps neighbouring dots moving together |
+| Jitter along | 0.75–1 | randomness that does not break the lines |
 | Randomness | 0–0.05 | precision, not texture |
 | Dot size / spacing | small and tight | detail needs somewhere to land |
 

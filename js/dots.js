@@ -97,7 +97,7 @@ var CD = window.CD || {};
   function buildDots(ctx) {
     var lines = ctx.lines;
     var depth = ctx.depth, grad = ctx.grad, mask = ctx.mask, flow = ctx.flow;
-    var tone = ctx.tone;
+    var tone = ctx.tone, relief = ctx.relief;
     var s = ctx.fieldScale;
     var p = ctx.params;
     var rng = ctx.rng;
@@ -107,6 +107,7 @@ var CD = window.CD || {};
     var spacingBase = Math.max(0.6, p.dotSpacing);
     var maxDots = p.maxDots;
     var gate = gateFor(p.edgeDissolve);
+    var along = amount(p.jitterAlong, 0.75);
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
       var pts = lines[li];
@@ -147,26 +148,28 @@ var CD = window.CD || {};
             var rot = Math.atan2(dir.y, dir.x);
             rot += (rng() - 0.5) * 2 * jitter * 0.9;
 
-            /* relief displacement along the depth gradient */
+            /* relief displacement, read from the smoothed relief field so
+             * that neighbouring dots on one contour move together */
             var px = x, py = y;
-            if (p.depthExaggeration > 0.001) {
-              var gx = grad.sample(fx, fy, 0), gy = grad.sample(fx, fy, 1);
-              var gl = Math.hypot(gx, gy);
-              if (gl > 1e-5) {
-                var amt = p.depthExaggeration * Math.min(1, gl * 14);
-                px += (gx / gl) * amt;
-                py += (gy / gl) * amt;
-              }
+            if (p.depthExaggeration > 0.001 && relief) {
+              px += relief.sample(fx, fy, 0) * p.depthExaggeration;
+              py += relief.sample(fx, fy, 1) * p.depthExaggeration;
             }
 
-            /* positional randomness, perpendicular to the contour so the
-             * lines stay legible as lines */
+            /* Positional randomness, split between running along the contour
+             * and across it. Along is nearly free — sliding a dot forwards
+             * on the line it is already drawing does not disturb the line at
+             * all — while across is precisely what breaks it up. The old
+             * split put the larger share across, which is why randomness cost
+             * so much legibility: at the default it more than doubled the
+             * measured wobble of a line. Jitter along now decides the split,
+             * and favours along. */
             if (jitter > 0) {
-              var jn = (rng() - 0.5) * 2 * jitter * localSpacing * 0.55;
-              px += -uy * jn;
-              py += ux * jn;
-              var jt = (rng() - 0.5) * 2 * jitter * localSpacing * 0.35;
-              px += ux * jt; py += uy * jt;
+              var spread = jitter * localSpacing * 0.6;
+              var rPerp = (rng() - 0.5) * 2 * spread * (1 - along);
+              var rTan = (rng() - 0.5) * 2 * spread * along;
+              px += -uy * rPerp + ux * rTan;
+              py += ux * rPerp + uy * rTan;
             }
 
             dots.push({ x: px, y: py, s: size, r: rot, d: d, c: ch.c, a: ch.a });
@@ -196,7 +199,7 @@ var CD = window.CD || {};
    * ------------------------------------------------------------------------*/
   function buildGridDots(ctx) {
     var depth = ctx.depth, grad = ctx.grad, mask = ctx.mask, flow = ctx.flow;
-    var tone = ctx.tone;
+    var tone = ctx.tone, relief = ctx.relief;
     var s = ctx.fieldScale;
     var p = ctx.params;
     var rng = ctx.rng;
@@ -247,14 +250,9 @@ var CD = window.CD || {};
         var rot = Math.atan2(dir.y, dir.x) + (rng() - 0.5) * 2 * jitter * 0.9;
 
         var px = x, py = y;
-        if (p.depthExaggeration > 0.001) {
-          var gx = grad.sample(fx, fy, 0), gy = grad.sample(fx, fy, 1);
-          var gl = Math.hypot(gx, gy);
-          if (gl > 1e-5) {
-            var amt = p.depthExaggeration * Math.min(1, gl * 14);
-            px += (gx / gl) * amt;
-            py += (gy / gl) * amt;
-          }
+        if (p.depthExaggeration > 0.001 && relief) {
+          px += relief.sample(fx, fy, 0) * p.depthExaggeration;
+          py += relief.sample(fx, fy, 1) * p.depthExaggeration;
         }
         if (jitter > 0) {
           px += (rng() - 0.5) * 2 * jitter * step * 0.5;

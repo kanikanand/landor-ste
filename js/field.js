@@ -180,7 +180,41 @@ var CD = window.CD || {};
       }
     }
 
-    return { depth: depth, mask: mask, grad: grad, w: w, h: h };
+    /* 8. RELIEF — the displacement field that depth exaggeration applies.
+     *
+     * Sampling the raw gradient once per dot is what tears contours apart.
+     * The displacement's magnitude was a saturating function of |grad D|,
+     * which on a photograph swings from nothing to full over a couple of
+     * pixels, and its direction is the gradient — perpendicular to the
+     * contour, the one direction in which a difference is maximally visible.
+     * So two neighbouring dots on the same line got shoved by different
+     * amounts, sideways, and the line broke up. Measured on a photographic
+     * depth field at low smoothing, the step between neighbours reached half
+     * a dot radius; on a mathematically smooth dome it is a hundredth of that,
+     * which is why the flaw hides on synthetic tests and shows on real work.
+     *
+     * Built as a field instead. Direction still comes from the gradient, but
+     * magnitude comes from depth — and depth is very nearly constant along a
+     * contour, because a contour *is* an iso-depth line — and the whole field
+     * is then smoothed. Neighbouring dots now receive almost the same
+     * displacement, so a line translates as a whole instead of shredding,
+     * while lines at different depths still shift by different amounts and
+     * the relief survives.
+     */
+    var relief = new CD.Field(w, h, 2);
+    var rl = relief.data;
+    for (i = 0; i < n; i++) {
+      var rx = gd[i * 2], ry = gd[i * 2 + 1];
+      var rm = Math.hypot(rx, ry);
+      if (rm > 1e-5) {
+        var k = d[i] / rm;
+        rl[i * 2] = rx * k;
+        rl[i * 2 + 1] = ry * k;
+      }
+    }
+    relief.blur(p.reliefCoherence === undefined ? 10 : p.reliefCoherence, 2);
+
+    return { depth: depth, mask: mask, grad: grad, relief: relief, w: w, h: h };
   }
 
   /* --------------------------------------------------------------------------

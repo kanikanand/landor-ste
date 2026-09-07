@@ -242,6 +242,7 @@ var CD = window.CD || {};
       lines: state.lines,
       depth: state.dep.depth,
       grad: state.dep.grad,
+      relief: state.dep.relief,
       mask: state.region,
       flow: state.flow,
       tone: state.tone,

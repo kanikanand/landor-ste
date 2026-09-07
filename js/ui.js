@@ -85,12 +85,19 @@ var CD = window.CD || {};
     {
       group: 'Depth', hint: 'Field 1. Black is far, white is near.',
       controls: [
-        { key: 'depthExaggeration', label: 'Depth exaggeration', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots',
-          help: 'Displaces each dot along the depth gradient. This is the relief.' },
+        { key: 'depthExaggeration', label: 'Depth exaggeration', min: 0, max: 30, step: 0.1, def: 3, stage: 'dots',
+          help: 'Shifts each dot along the smoothed relief field. This is the ' +
+                'relief. It now applies across the whole surface rather than ' +
+                'only at edges, so it bites harder per unit than it used to.' },
         { key: 'depthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth',
           help: 'Steepens near against far.' },
         { key: 'depthSmoothing', label: 'Depth smoothing', min: 0, max: 30, step: 1, def: 10, stage: 'depth',
-          help: 'Turns a noisy photo into a continuous surface. Contours need this.' }
+          help: 'Turns a noisy photo into a continuous surface. Contours need this.' },
+        { key: 'reliefCoherence', label: 'Relief coherence', min: 0, max: 24, step: 1, def: 10,
+          stage: 'depth',
+          help: 'How far the relief displacement is smoothed before it is applied. ' +
+                'Low values let neighbouring dots shift by different amounts and ' +
+                'tear the contours apart.' }
       ]
     },
     {
@@ -120,7 +127,12 @@ var CD = window.CD || {};
           help: 'The curve of the depth \u2192 size channel; its strength is set ' +
                 'under Depth mapping.' },
         { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
-        { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' }
+        { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' },
+        { key: 'jitterAlong', label: 'Jitter along', min: 0, max: 1, step: 0.01, def: 0.75,
+          stage: 'dots',
+          help: 'How much of the randomness runs along the contour rather than ' +
+                'across it. Along is nearly invisible; across is what breaks the ' +
+                'lines up. 1 keeps the lines intact.' }
       ]
     },
     {
