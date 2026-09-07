@@ -10,7 +10,9 @@ var CD = window.CD || {};
 (function (CD) {
   'use strict';
 
-  var STAGES = ['depth', 'flow', 'lines', 'dots', 'draw'];
+  /* region sits between depth and flow: it depends on the depth mask, and the
+   * tracer and the dots both read it, but the flow field never does. */
+  var STAGES = ['depth', 'region', 'flow', 'lines', 'dots', 'draw'];
 
   var SCHEMA = [
     {
@@ -23,6 +25,34 @@ var CD = window.CD || {};
         { key: 'depthPreview', label: 'Show depth map', type: 'toggle', def: false,
           stage: 'draw',
           help: 'Draws field 1 behind the dots, to check it. Not exported to SVG.' }
+      ]
+    },
+    {
+      group: 'Overlay', hint: 'Dot part of the subject; leave the rest showing.',
+      controls: [
+        { key: 'showPhoto', label: 'Show photograph', type: 'toggle', def: false,
+          stage: 'draw',
+          help: 'Draws the source image under the dots. Where no dots fall it ' +
+                'is simply not covered, so it stays the original picture.' },
+        { key: 'photoFade', label: 'Photo fade', min: 0, max: 1, step: 0.01, def: 0,
+          stage: 'draw',
+          help: 'Sinks the photograph towards the background colour, so the ' +
+                'dots carry more of the image.' },
+        { key: 'wipe', label: 'Partial overlay', type: 'toggle', def: false,
+          stage: 'region',
+          help: 'Confines the dots to one side of a line, intersected with the ' +
+                'subject so they never run onto the background.' },
+        { key: 'wipePosition', label: 'Wipe position', min: 0, max: 1, step: 0.01,
+          def: 0.5, stage: 'region' },
+        { key: 'wipeAngle', label: 'Wipe angle', min: 0, max: 360, step: 1, def: 0,
+          stage: 'region',
+          help: 'The direction the dots run towards. Add 180 to swap sides.' },
+        { key: 'wipeFeather', label: 'Wipe softness', min: 0, max: 0.6, step: 0.01,
+          def: 0.12, stage: 'region' },
+        { key: 'edgeDissolve', label: 'Edge dissolve', min: 0, max: 1, step: 0.01,
+          def: 0.7, stage: 'dots',
+          help: 'Shrinks dots away across the edge instead of cutting them off ' +
+                'mid-row. This is what sells the transition.' }
       ]
     },
     {
@@ -63,6 +93,9 @@ var CD = window.CD || {};
     {
       group: 'Dots', hint: 'Oriented primitives, not particles.',
       controls: [
+        { key: 'gridFill', label: 'Grid fill', type: 'toggle', def: false, stage: 'dots',
+          help: 'A lattice instead of dots strung along the contours. Reads as ' +
+                'a halftone on broad flat surfaces, where contours wander.' },
         { key: 'shapeType', label: 'Shape', type: 'shape', def: 'circle', stage: 'draw' },
         { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
         { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0.18, stage: 'dots' },

@@ -36,7 +36,7 @@ from luminance either way.
 ## The idea
 
 The image is not treated as brightness to be halftoned. It is treated as a
-**height map**, and everything else is derived from it. There are two fields.
+**height map**, and everything else is derived from it. There are three fields.
 
 ### Field 1 — depth
 
@@ -122,6 +122,59 @@ banding of the reference, rather than the clumping and crossing you get from
 seeding at random. Separation is depth-modulated, so near regions of the
 surface carry more lines than far ones.
 
+### Field 3 — region
+
+```
+R(x, y) = mask * wipe
+```
+
+Where dots are allowed to exist at all. The silhouette the threshold carved,
+intersected with an authored area — and the intersection is the whole point. A
+wipe on its own is a rectangle laid across the frame, and dots marching off the
+subject onto the background read as a filter applied to the picture. Multiplied
+by the silhouette they stop at the subject's edge *and* at the wipe, which is
+what makes a partial overlay look deliberate.
+
+Region sits on its own pipeline stage, between depth and flow. It costs one
+multiply over the analysis grid, so dragging a wipe slider never rebuilds the
+depth field — but the tracer and the dots both read it, so the contours retrace
+and the lines only exist where the region allows.
+
+## Partial overlay
+
+Dotting part of the subject and leaving the rest of the photograph showing is
+just draw order plus field 3. **Show photograph** draws the source image under
+the dots; where no dot falls it is never covered, so it stays the original
+picture, pixel for pixel. There is no blending involved beyond **Photo fade**,
+which sinks the image towards the background colour when you want the dots to
+carry more of the picture.
+
+**Partial overlay** turns on the wipe: a soft-edged line with a position, an
+angle (the direction the dots run towards — add 180 to swap sides) and a
+softness.
+
+**Edge dissolve** is what actually sells the transition. Without it, dots stop
+mid-row at a hard coverage threshold and the boundary reads as a cut. With it,
+dot size falls off across the feather, and it is remapped against the same
+threshold the tracer uses to decide where a line may run — so a dot reaches
+zero size exactly where it stops being drawn, rather than vanishing at a third
+of full size. Lines and dots share that one number, so they agree about where
+the region ends.
+
+## Fill modes
+
+Two ways to fill the region, and they suit different surfaces:
+
+**Contour** (the default) strings dots along the evenly-spaced streamlines.
+Anything with curvature — a cheek, a tyre, a shoulder — bands the way the
+reference does, because the iso-depth contours of a round thing are rings.
+
+**Grid fill** lays a hexagonally-packed lattice instead, at the base angle.
+Broad flat surfaces are where contour bands have little to follow and start to
+wander; a lattice reads as a straight halftone there and holds still. Size,
+colour and relief still come from depth and rotation still comes from flow, so
+the two modes sit in the same picture without disagreeing.
+
 ## The dot primitive
 
 This is deliberately **not** a generic particle system. A dot is a small piece
@@ -169,6 +222,9 @@ across all shape types; the remainder is antialiasing on dot edges.
 **Depth source** — Estimate depth (Depth Anything V2 instead of luminance),
 Show depth map (field 1 as a greyscale underlay).
 
+**Overlay** — Show photograph, Photo fade, Partial overlay (the wipe), Wipe
+position / angle / softness, Edge dissolve.
+
 **Image** — Threshold (carves the negative space), Contrast, Invert depth
 (for a subject lit dark-on-light).
 
@@ -181,8 +237,8 @@ photograph into a continuous surface — contours need this).
 at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
 Flow coherence.
 
-**Dots** — Shape, Dot size, Size variation, Size falloff, Dot spacing,
-Randomness.
+**Dots** — Grid fill, Shape, Dot size, Size variation, Size falloff, Dot
+spacing, Randomness.
 
 **Colour** — Background, Far colour, Near colour, Colour falloff.
 
@@ -220,7 +276,7 @@ The pipeline is staged, and each control dirties only its own stage and
 everything downstream of it:
 
 ```
-depth  ->  flow  ->  lines  ->  dots  ->  draw
+depth  ->  region  ->  flow  ->  lines  ->  dots  ->  draw
 ```
 
 Moving a dot slider never re-traces the contours; changing a colour only
@@ -236,10 +292,10 @@ possible settings (~100k dots) take about 3 s.
 index.html            markup + script order
 css/style.css         tool chrome
 js/core.js            Field container (bilinear sampling, separable blur), resample, math
-js/field.js           depth field, gradient, flow field
+js/field.js           depth field, gradient, flow field, region field
 js/streamlines.js     evenly-spaced streamline tracer + spatial hash
 js/shapes.js          the dot primitive, drawDot, SVG shape upload
-js/dots.js            streamlines -> oriented dots, colour ramp
+js/dots.js            contour + grid fills, edge dissolve, colour ramp
 js/svgexport.js       vector export
 js/depthmodel.js      Depth Anything V2 in the browser (transformers.js)
 js/ui.js              declarative control schema + panel

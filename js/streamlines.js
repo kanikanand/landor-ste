@@ -61,7 +61,7 @@ var CD = window.CD || {};
   function Tracer(ctx) {
     this.flow = ctx.flow;         // Field(2ch) doubled-angle line field
     this.depth = ctx.depth;       // Field(1ch) 0..1
-    this.mask = ctx.mask;         // Field(1ch) 0..1 negative-space coverage
+    this.mask = ctx.mask;         // Field(1ch) 0..1 region coverage
     this.w = ctx.viewW;
     this.h = ctx.viewH;
     this.s = ctx.fieldScale;      // view px -> field px
@@ -69,6 +69,12 @@ var CD = window.CD || {};
     this.rng = ctx.rng;
 
     var p = this.p;
+    /* How much coverage a point needs before a line may run through it. Half
+     * is the hard edge; dissolving the region edge lowers the bar so lines
+     * carry on into the feather, where the dots shrink away rather than
+     * stopping mid-row. Lines and dots share this number so they agree about
+     * where the region ends. */
+    this.insideMin = ctx.insideMin !== undefined ? ctx.insideMin : 0.5;
     this.sepBase = Math.max(1.2, p.lineSpacing / Math.max(0.05, p.lineDensity));
     this.sepMin = this.sepBase * 0.6;
     this.sepMax = this.sepBase * 1.7;
@@ -94,7 +100,7 @@ var CD = window.CD || {};
 
   Tracer.prototype.inside = function (x, y) {
     return x >= 0 && y >= 0 && x < this.w && y < this.h &&
-           this.maskAt(x, y) > 0.5;
+           this.maskAt(x, y) > this.insideMin;
   };
 
   Tracer.prototype.dir = function (x, y) {
@@ -191,7 +197,7 @@ var CD = window.CD || {};
     var stepX = Math.max(1, Math.floor(this.w / 120));
     for (var y = 0; y < this.h; y += stepX) {
       for (var x = 0; x < this.w; x += stepX) {
-        if (this.maskAt(x, y) <= 0.5) continue;
+        if (this.maskAt(x, y) <= this.insideMin) continue;
         var d = this.depthAt(x, y);
         if (d > bestD) { bestD = d; best = [x, y]; }
       }

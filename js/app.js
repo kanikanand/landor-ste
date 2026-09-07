@@ -5,7 +5,7 @@
  * everything downstream of it, so dragging a dot slider never re-traces the
  * contours and never rebuilds the depth field.
  *
- *   depth  ->  flow  ->  lines  ->  dots  ->  draw
+ *   depth  ->  region  ->  flow  ->  lines  ->  dots  ->  draw
  * ==========================================================================*/
 var CD = window.CD || {};
 
@@ -23,7 +23,7 @@ var CD = window.CD || {};
     srcName: 'sample',
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
-    dep: null, flow: null, lines: [], dots: [],
+    dep: null, region: null, flow: null, lines: [], dots: [],
     modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
     modelBusy: false,
     modelToken: 0,       // bumped on every new image, to drop stale estimates
@@ -201,6 +201,13 @@ var CD = window.CD || {};
     state.dep = CD.buildDepth(px, fw, fh, p);
   }
 
+  /* Field 3. The silhouette the depth threshold carved, narrowed to the area
+   * the wipe allows. Cheap — one multiply over the analysis grid — so it can
+   * sit on its own stage and a wipe slider never rebuilds the depth field. */
+  function stageRegion(p) {
+    state.region = CD.buildRegion(state.dep.mask, state.dep.w, state.dep.h, p);
+  }
+
   function stageFlow(p) {
     state.flow = CD.buildFlow(state.dep, p, function (x, y) {
       return (typeof noise === 'function') ? noise(x, y) : 0.5;
@@ -211,7 +218,8 @@ var CD = window.CD || {};
     var tracer = new CD.Tracer({
       flow: state.flow,
       depth: state.dep.depth,
-      mask: state.dep.mask,
+      mask: state.region,
+      insideMin: CD.gateFor(p.edgeDissolve),
       viewW: state.viewW, viewH: state.viewH,
       fieldScale: state.fieldScale,
       params: p,
@@ -221,16 +229,18 @@ var CD = window.CD || {};
   }
 
   function stageDots(p) {
-    state.dots = CD.buildDots({
+    var args = {
       lines: state.lines,
       depth: state.dep.depth,
       grad: state.dep.grad,
-      mask: state.dep.mask,
+      mask: state.region,
       flow: state.flow,
+      viewW: state.viewW, viewH: state.viewH,
       fieldScale: state.fieldScale,
       params: p,
       rng: CD.makeRng(p.seed ^ 0x9e3779b9)
-    });
+    };
+    state.dots = p.gridFill ? CD.buildGridDots(args) : CD.buildDots(args);
   }
 
   function stageDraw() {
@@ -241,6 +251,18 @@ var CD = window.CD || {};
     ctx.save();
     ctx.fillStyle = p.background;
     ctx.fillRect(0, 0, state.viewW, state.viewH);
+
+    /* The photograph goes under the dots, and where no dot falls it is simply
+     * never covered — that is the whole trick of a partial overlay. Fading it
+     * towards the background colour is the only blending involved. */
+    if (p.showPhoto && state.srcCanvas && p.photoFade < 1) {
+      ctx.save();
+      ctx.globalAlpha = 1 - p.photoFade;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(state.srcCanvas, 0, 0, state.viewW, state.viewH);
+      ctx.restore();
+    }
 
     if (p.depthPreview && state.dep) drawDepthPreview();
 
@@ -281,7 +303,8 @@ var CD = window.CD || {};
     }
     var g = previewCanvas.getContext('2d');
     var img = g.createImageData(fw, fh);
-    var out = img.data, d = dep.depth.data, m = dep.mask.data;
+    var out = img.data, d = dep.depth.data;
+    var m = (state.region || dep.mask).data;
     for (var i = 0; i < n; i++) {
       var v = Math.round(CD.clamp(d[i], 0, 1) * CD.clamp(m[i], 0, 1) * 255);
       out[i * 4] = v; out[i * 4 + 1] = v; out[i * 4 + 2] = v; out[i * 4 + 3] = 255;
@@ -384,8 +407,8 @@ var CD = window.CD || {};
     var from = quality === 'draft' ? state.dirty : state.pendingFull;
     if (!from) return;
 
-    /* The draft pass already produced correct depth and flow (it only shrinks
-     * line and dot counts), so the full pass restarts at the line stage. */
+    /* The draft pass already produced correct depth, region and flow (it only
+     * shrinks line and dot counts), so the full pass restarts at the lines. */
     if (quality === 'full' && state.quality === 'draft' &&
         STAGES.indexOf(from) < STAGES.indexOf('lines')) {
       from = 'lines';
@@ -397,9 +420,10 @@ var CD = window.CD || {};
 
     try {
       if (i0 <= 0) stageDepth(p);
-      if (i0 <= 1) stageFlow(p);
-      if (i0 <= 2) stageLines(p);
-      if (i0 <= 3) stageDots(p);
+      if (i0 <= 1) stageRegion(p);
+      if (i0 <= 2) stageFlow(p);
+      if (i0 <= 3) stageLines(p);
+      if (i0 <= 4) stageDots(p);
       stageDraw();
     } catch (e) {
       console.error(e);

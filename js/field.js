@@ -10,6 +10,12 @@
  *                              F      = (-dD/dy, dD/dx)
  *                            i.e. F runs *along* the iso-depth contours, so
  *                            streamlines of F wrap around the form.
+ *
+ *   FIELD 3  REGION R(x,y)   where dots are allowed to exist at all. The
+ *                            object's own silhouette, intersected with an
+ *                            authored area — which is what lets the dots
+ *                            cover part of the subject and leave the rest of
+ *                            the photograph showing.
  * ==========================================================================*/
 var CD = window.CD || {};
 
@@ -122,6 +128,57 @@ var CD = window.CD || {};
   }
 
   /* --------------------------------------------------------------------------
+   * REGION
+   *
+   * Silhouette AND authored area, multiplied:
+   *
+   *     R = mask * wipe
+   *
+   * The intersection is the whole point. A wipe on its own is a rectangle
+   * across the frame, and dots marching off the subject onto the background
+   * read as a filter laid over the picture; multiplied by the silhouette they
+   * stop at the subject's edge as well as at the wipe, which is what makes a
+   * partial overlay look deliberate rather than applied.
+   * ------------------------------------------------------------------------*/
+
+  /* Soft-edged linear wipe, evaluated in normalised field coordinates.
+   * `wipeAngle` is the direction dots run towards: 0 puts them on the right,
+   * 90 at the bottom, and adding 180 swaps which side is covered. */
+  function buildRegion(mask, w, h, p) {
+    var region = mask.clone();
+    if (!p.wipe) return region;
+
+    var r = region.data;
+    var a = (p.wipeAngle || 0) * Math.PI / 180;
+    var ux = Math.cos(a), uy = Math.sin(a);
+
+    /* Project the four corners onto the wipe axis to find its extent, so
+     * position reads 0..1 across the frame whatever the angle. */
+    var lo = Infinity, hi = -Infinity;
+    var corners = [[0, 0], [1, 0], [0, 1], [1, 1]];
+    for (var c = 0; c < 4; c++) {
+      var t = (corners[c][0] - 0.5) * ux + (corners[c][1] - 0.5) * uy;
+      if (t < lo) lo = t;
+      if (t > hi) hi = t;
+    }
+    var span = (hi - lo) || 1;
+
+    var half = Math.max(0, p.wipeFeather) * 0.5;
+    var e0 = p.wipePosition - half, e1 = p.wipePosition + half;
+
+    for (var y = 0; y < h; y++) {
+      var v = (y + 0.5) / h;
+      for (var x = 0; x < w; x++) {
+        var u = (x + 0.5) / w;
+        var tt = (((u - 0.5) * ux + (v - 0.5) * uy) - lo) / span;
+        r[y * w + x] *= smoothstep(e0, e1, tt);
+      }
+    }
+
+    return region;
+  }
+
+  /* --------------------------------------------------------------------------
    * FLOW
    *
    * A contour direction is a *line* field, not a vector field: theta and
@@ -211,6 +268,7 @@ var CD = window.CD || {};
   }
 
   CD.buildDepth = buildDepth;
+  CD.buildRegion = buildRegion;
   CD.buildDepthFromValues = buildDepthFromValues;
   CD.buildFlow = buildFlow;
   CD.dirAt = dirAt;
