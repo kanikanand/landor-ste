@@ -54,6 +54,11 @@ var CD = window.CD || {};
           stage: 'draw',
           help: 'Sinks the photograph towards the background colour, so the ' +
                 'dots carry more of the image.' },
+        { key: 'photoWipe', label: 'Photo hand-over', min: 0, max: 1, step: 0.01,
+          def: 0.85, stage: 'draw',
+          help: 'Takes the photograph back down across the same edge the dots ' +
+                'come up on, so the subject is handed from one representation ' +
+                'to the other. 0 leaves the picture at full strength underneath.' },
         { key: 'wipe', label: 'Partial overlay', type: 'toggle', def: false,
           stage: 'region',
           help: 'Confines the dots to one side of a line, intersected with the ' +
@@ -128,6 +133,11 @@ var CD = window.CD || {};
                 'under Depth mapping.' },
         { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
         { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' },
+        { key: 'rowAlign', label: 'Row align', min: 0, max: 1, step: 0.01, def: 0,
+          stage: 'dots',
+          help: 'Locks the dots to a common phase so they line up across ' +
+                'neighbouring contours as well as along them — bands of dots ' +
+                'become a lattice lying on the surface. Follows Base angle.' },
         { key: 'jitterAlong', label: 'Jitter along', min: 0, max: 1, step: 0.01, def: 0.75,
           stage: 'dots',
           help: 'How much of the randomness runs along the contour rather than ' +

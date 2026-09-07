@@ -264,8 +264,7 @@ var CD = window.CD || {};
     ctx.fillRect(0, 0, state.viewW, state.viewH);
 
     /* The photograph goes under the dots, and where no dot falls it is simply
-     * never covered — that is the whole trick of a partial overlay. Fading it
-     * towards the background colour is the only blending involved. */
+     * never covered — that is the whole trick of a partial overlay. */
     if (p.showPhoto && state.srcCanvas && p.photoFade < 1) {
       ctx.save();
       ctx.globalAlpha = 1 - p.photoFade;
@@ -273,6 +272,14 @@ var CD = window.CD || {};
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(state.srcCanvas, 0, 0, state.viewW, state.viewH);
       ctx.restore();
+
+      /* Hand-over. Left alone, the photograph carries on at full strength
+       * underneath the dots and the two representations fight: the picture
+       * still reads as the subject, and the dots read as something laid over
+       * the top of it. Taking the photograph back down across the same edge
+       * the dots come up on makes it one subject drawn two ways and handed
+       * from one to the other, which is what the split is for. */
+      if (p.wipe && p.photoWipe > 0) drawPhotoHandover(p);
     }
 
     if (p.depthPreview && state.dep) drawDepthPreview();
@@ -304,6 +311,41 @@ var CD = window.CD || {};
       }
     }
     ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /* Knock the photograph back on the side the dots are on, using a gradient
+   * built from the very same wipe geometry the region field used — so the two
+   * edges coincide exactly instead of drifting apart at odd angles or aspect
+   * ratios. Painting the background colour over the photograph through that
+   * gradient is all it takes; no per-pixel work. */
+  function drawPhotoHandover(p) {
+    var g = CD.wipeGeometry(p);
+    var W = state.viewW, H = state.viewH;
+
+    /* the wipe parameter is linear in view pixels: t = A*x + B*y + C */
+    var A = g.ux / (W * g.span), B = g.uy / (H * g.span);
+    var C = (-0.5 * g.ux - 0.5 * g.uy - g.lo) / g.span;
+    var G2 = A * A + B * B;
+    if (G2 < 1e-18) return;
+
+    var cx = W * 0.5, cy = H * 0.5;
+    var tc = A * cx + B * cy + C;
+    var e0 = g.e0, e1 = g.e1;
+    /* a hard wipe would be a degenerate gradient; give it a hair of width */
+    if (Math.abs(e1 - e0) < 1e-4) { e0 -= 5e-5; e1 += 5e-5; }
+
+    var k0 = (e0 - tc) / G2, k1 = (e1 - tc) / G2;
+    var grad = ctx.createLinearGradient(cx + A * k0, cy + B * k0,
+                                        cx + A * k1, cy + B * k1);
+    var rgb = CD.hexToRgb(p.background);
+    var head = 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',';
+    grad.addColorStop(0, head + '0)');
+    grad.addColorStop(1, head + CD.clamp(p.photoWipe, 0, 1) + ')');
+
+    ctx.save();
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
     ctx.restore();
   }
 

@@ -118,12 +118,33 @@ var CD = window.CD || {};
     var along = amount(p.jitterAlong, 0.75);
     var density = amount(p.densityDepth, 1);
     var minSize = minSizeFor(p);
+    var rowAlign = amount(p.rowAlign, 0);
+    var rowA = (p.flowAngle || 0) * Math.PI / 180;
+    var rowCa = Math.cos(rowA), rowSa = Math.sin(rowA);
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
       var pts = lines[li];
       if (pts.length < 4) continue;
 
-      var carry = rng() * spacingBase; // desync the phase of each line
+      /* Where the first dot of this line falls.
+       *
+       * A random phase per line desynchronises them, which reads as organic
+       * banding — dots strung along each contour independently. Locking the
+       * phase to a global ruler instead lines the dots up across neighbouring
+       * contours as well as along them, and the field stops reading as bands
+       * of dots and starts reading as a lattice lying on the surface, which
+       * is the look of a panelled hull or a wing. Row align blends the two;
+       * the residue at partial values is a jitter about the locked phase
+       * rather than an interpolation between two unrelated numbers. */
+      var carry;
+      if (rowAlign > 0) {
+        var q = pts[0] * rowCa + pts[1] * rowSa;
+        var locked = (((-q) % spacingBase) + spacingBase) % spacingBase;
+        var wobble = (rng() - 0.5) * spacingBase * (1 - rowAlign);
+        carry = ((locked + wobble) % spacingBase + spacingBase) % spacingBase;
+      } else {
+        carry = rng() * spacingBase; // desync the phase of each line
+      }
       for (var i = 0; i < pts.length - 2; i += 2) {
         var ax = pts[i], ay = pts[i + 1];
         var bx = pts[i + 2], by = pts[i + 3];

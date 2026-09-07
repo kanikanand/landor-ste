@@ -246,11 +246,11 @@ var CD = window.CD || {};
   /* Soft-edged linear wipe, evaluated in normalised field coordinates.
    * `wipeAngle` is the direction dots run towards: 0 puts them on the right,
    * 90 at the bottom, and adding 180 swaps which side is covered. */
-  function buildRegion(mask, w, h, p) {
-    var region = mask.clone();
-    if (!p.wipe) return region;
-
-    var r = region.data;
+  /* The wipe as one line in normalised coordinates. Both the region builder
+   * and the compositor that fades the photograph out read it from here, so
+   * the dots appearing and the photograph receding are two halves of the same
+   * edge rather than two edges that merely look alike. */
+  function wipeGeometry(p) {
     var a = (p.wipeAngle || 0) * Math.PI / 180;
     var ux = Math.cos(a), uy = Math.sin(a);
 
@@ -263,10 +263,19 @@ var CD = window.CD || {};
       if (t < lo) lo = t;
       if (t > hi) hi = t;
     }
-    var span = (hi - lo) || 1;
 
     var half = Math.max(0, p.wipeFeather) * 0.5;
-    var e0 = p.wipePosition - half, e1 = p.wipePosition + half;
+    return { ux: ux, uy: uy, lo: lo, span: (hi - lo) || 1,
+             e0: p.wipePosition - half, e1: p.wipePosition + half };
+  }
+
+  function buildRegion(mask, w, h, p) {
+    var region = mask.clone();
+    if (!p.wipe) return region;
+
+    var r = region.data;
+    var g = wipeGeometry(p);
+    var ux = g.ux, uy = g.uy, lo = g.lo, span = g.span, e0 = g.e0, e1 = g.e1;
 
     for (var y = 0; y < h; y++) {
       var v = (y + 0.5) / h;
@@ -373,6 +382,7 @@ var CD = window.CD || {};
   CD.toneField = toneField;
   CD.buildDepth = buildDepth;
   CD.buildRegion = buildRegion;
+  CD.wipeGeometry = wipeGeometry;
   CD.buildDepthFromValues = buildDepthFromValues;
   CD.buildFlow = buildFlow;
   CD.dirAt = dirAt;

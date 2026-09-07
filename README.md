@@ -185,6 +185,17 @@ carry more of the picture.
 angle (the direction the dots run towards — add 180 to swap sides) and a
 softness.
 
+**Photo hand-over** is what makes the split read as one subject rather than two
+things stacked. Left alone, the photograph carries on at full strength beneath
+the dots and the two representations fight: the picture still reads as the
+subject and the dots read as something laid over the top of it. Taking the
+photograph *back down* across the same edge the dots come up on hands the
+subject from one drawing to the other. The gradient that does it is built from
+the very same wipe geometry the region field uses — one `wipeGeometry`, two
+callers — so the two edges coincide exactly rather than drifting apart at odd
+angles or aspect ratios. It costs one gradient fill; there is no per-pixel
+work.
+
 **Edge dissolve** is what actually sells the transition. Without it, dots stop
 mid-row at a hard coverage threshold and the boundary reads as a cut. With it,
 dot size falls off across the feather, and it is remapped against the same
@@ -300,6 +311,23 @@ picture's own tone. Size then carries the geometry while colour carries the
 photograph — two different signals on two different channels, which is the
 whole reason to keep them apart.
 
+## Rows, and what a lattice needs
+
+**Row align** locks each contour's dots to a common phase instead of giving
+every line a random one. Aligned, the dots line up across neighbouring contours
+as well as along them, and the field starts reading as a lattice lying on the
+surface rather than as independent bands of dots — the look of a panelled hull
+or a wing.
+
+Be realistic about its reach. The phase is locked where each line *starts*, so
+the alignment holds along parallel, fairly straight runs and drifts apart as
+contours curve away from one another. On a panelled flank it does most of what
+you want; on a tightly curved form it is a small effect. A lattice that stays
+locked all the way around a surface is not recoverable from a photograph at
+all: it needs the surface's own parametrisation, which means real geometry —
+a UV pass out of Blender, or render targets from three.js. That is the honest
+ceiling of the image-only pipeline, and it is where the `v6-3d` work points.
+
 ## The dot primitive
 
 This is deliberately **not** a generic particle system. A dot is a small piece
@@ -355,8 +383,9 @@ Show depth map (field 1 as a greyscale underlay).
 
 **Silhouette** — Use image alpha, Silhouette cut, Silhouette cleanup.
 
-**Overlay** — Show photograph, Photo fade, Partial overlay (the wipe), Wipe
-position / angle / softness, Edge dissolve.
+**Overlay** — Show photograph, Photo fade, Photo hand-over (fades the picture
+out as the dots come up), Partial overlay (the wipe), Wipe position / angle /
+softness, Edge dissolve.
 
 **Image** — Depth floor (where the relief starts; no longer carves the
 silhouette), Contrast, Invert depth (for a subject lit dark-on-light).
@@ -372,8 +401,9 @@ at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
 Flow coherence.
 
 **Dots** — Grid fill, Shape, Dot size, Size variation, Size falloff, Dot
-spacing, Randomness, Jitter along (how much of that randomness runs along the
-contour rather than across it).
+spacing, Randomness, Row align (locks the dots to a common phase across
+contours), Jitter along (how much of that randomness runs along the contour
+rather than across it).
 
 **Depth mapping** — Depth → size, Depth → colour, Depth → opacity, Depth →
 density, Tint from image.
@@ -419,6 +449,8 @@ smoothing 10. For a clean render rather than a noisy photograph:
 | Randomness | 0–0.05 | precision, not texture |
 | Depth → density | 0 | covers a chosen segment evenly, lights and darks alike |
 | Silhouette cut | 0.02 | now that it reaches into the shadows |
+| Photo hand-over | 0.85–1 | the picture recedes as the dots take over |
+| Row align | 0.7–1 | rows that line up across contours, not just along |
 | Dot size / spacing | small and tight | detail needs somewhere to land |
 
 Turning **Estimate depth** on matters most here. A render's tyres and shadowed
