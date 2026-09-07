@@ -166,9 +166,10 @@ of dots. Either falls back to a plain circle until an SVG is loaded into it.
 - **Node every** — steps between shape 1. At 1 every dot is shape 1. Shared.
 - **Node scale** — how much bigger shape 1 is than shape 2. Per mode.
 
-Each line starts on a node rather than a random phase, so an open contour
-terminates with one instead of cutting off mid-run, and links are suppressed
-within about a node radius of the node just placed.
+It is a *labelling* of the walk, never a change to it. Every line still starts
+on v1's random phase, the spacing floor still answers about v1's dot, and the
+enlarged node is carried separately so it cannot reach back into either. Node
+scale changes what a dot looks like and nothing about where it lands.
 
 Uploaded SVGs are kept as a list of parts, each with its own fill, stroke,
 stroke-width and fill-rule, rather than merged into one filled path. Merging
@@ -178,12 +179,17 @@ blob.
 
 ## The guarantee
 
-Surface output is verified against the previous build — itself verified
-byte-for-byte against v1 — by dumping every dot from both and comparing field
-by field: position, size, rotation and depth. Across eight parameter regimes
-on two images, sixteen for sixteen, every value is identical. Nothing the
-other two modes do can move a surface dot: they never share a depth field, a
-mask, a flow field or a random stream.
+Surface output is verified against v1 itself — the first commit, served
+alongside — by dumping every dot from both builds and comparing field by
+field. Ten parameter regimes on two images, checked two ways each:
+
+- at **Node scale 1**, every field is identical, size included;
+- at **Node scale 2.2**, every position, rotation and depth is still identical
+  and only the marked dots differ in size, by exactly that factor.
+
+Forty checks for forty. Nothing the other two modes do can move a surface dot
+either: they never share a depth field, a mask, a flow field or a random
+stream.
 
 ## The dot primitive
 
@@ -241,7 +247,8 @@ appears while that mode is on, and controls sit two to a row, so all three
 modes' controls fit at once without scrolling.
 
 **Picture** — Show image (the photograph behind the dots, and in the exported
-SVG), Background, Far colour, Near colour.
+SVG; off by default, so the opening view is v1's), Background, Far colour,
+Near colour.
 
 **Modes** — Surface, Edge, Fingerprint. Independent; any combination.
 

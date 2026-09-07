@@ -58,7 +58,8 @@ var CD = window.CD || {};
     {
       group: 'Picture',
       controls: [
-        { key: 'showImage', label: 'Show image', type: 'toggle', def: true, stage: 'draw' },
+        { key: 'showImage', label: 'Show image', type: 'toggle', def: false, stage: 'draw',
+          help: 'The photograph behind the dots, and in the exported SVG.' },
         { key: 'background', label: 'Background', type: 'color', def: '#000000', stage: 'draw' },
         { key: 'colorFar', label: 'Far', type: 'color', def: '#4a0410', stage: 'draw' },
         { key: 'colorNear', label: 'Near', type: 'color', def: '#ff2233', stage: 'draw' }

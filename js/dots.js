@@ -33,9 +33,16 @@ var CD = window.CD || {};
     var gate = ctx.gate || null;
 
     /* Node + link: shape 1 lands every Nth step along the line, shape 2 fills
-     * the run between. Off unless the shape mode asks for it, and every branch
-     * below is guarded, so a render that does not use it walks exactly the
-     * path v1 walked — same arithmetic, same sequence of random draws. */
+     * the run between.
+     *
+     * It is a *labelling* of the walk, never a change to it. The walk below is
+     * v1's, arithmetic for arithmetic and random draw for random draw, and
+     * node/link only decides which shape each dot is drawn with and how big
+     * the marked ones come out. Earlier it also started every line on a node,
+     * skipped links that fell too near one, and fed the enlarged node size
+     * back into the spacing floor — three things that each moved every dot
+     * downstream of them, so surface mode stopped being v1. Now Node scale
+     * changes what a dot looks like and nothing about where it lands. */
     var pairMode = p.shapeType === 'nodes';
     var nodeEvery = Math.max(1, Math.round(p.nodeEvery));
     var nodeScale = Math.max(0.1, p.nodeScale);
@@ -56,15 +63,10 @@ var CD = window.CD || {};
       var flat = line.kind === 'edge' || line.kind === 'fingerprint';
       if (!pts || pts.length < 4) continue;
 
-      /* Normally each line starts on a random phase so the dots do not comb
-       * into rows. In node/link mode the phase is the rhythm, so every line
-       * starts on a node instead. */
-      var carry = pairMode ? 0 : rng() * spacingBase;
+      /* Each line starts on a random phase so the dots do not comb into rows
+       * across neighbouring lines. */
+      var carry = rng() * spacingBase;
       var idx = 0;                 // step count along this line
-      var arc = 0;                 // arc length walked so far
-      var segStart = 0;            // arc length at the start of this segment
-      var lastNodeArc = -1e9;
-      var lastNodeSize = 0;
 
       for (var i = 0; i < pts.length - 2; i += 2) {
         var ax = pts[i], ay = pts[i + 1];
@@ -76,7 +78,6 @@ var CD = window.CD || {};
 
         var t = carry;
         while (t < segLen) {
-          arc = segStart + t;
           var x = ax + ux * t, y = ay + uy * t;
           var fx = x * s, fy = y * s;
           var m = mask.sample(fx, fy, 0);
@@ -102,22 +103,15 @@ var CD = window.CD || {};
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
           localSpacing = Math.max(size * 2.15, localSpacing);
 
-          var role = null;
+          /* The step is now fixed. Everything after this point decides what
+           * the dot looks like, never where the next one falls — the enlarged
+           * node is carried separately so it cannot reach back into the
+           * spacing floor or into the too-small test below, both of which are
+           * v1's and answer about v1's dot. */
+          var role = null, mark = size;
           if (pairMode) {
-            if (idx % nodeEvery === 0) {
-              role = 'node';
-              size *= nodeScale;
-            } else {
-              role = 'link';
-              /* Keep clear of the node just placed, so it reads as a marked
-               * point with the run starting after it rather than as a blob
-               * with dots buried in its edge. */
-              if (arc - lastNodeArc < (lastNodeSize + size) * 0.95) {
-                idx++;
-                t += localSpacing;
-                continue;
-              }
-            }
+            if (idx % nodeEvery === 0) { role = 'node'; mark = size * nodeScale; }
+            else { role = 'link'; }
           }
 
           var alive = gate ? gate(fx, fy) : (m > 0.5);
@@ -164,15 +158,13 @@ var CD = window.CD || {};
              * its whole length instead of sinking into the background. */
             var tint = flat ? 1 : d;
 
-            if (role === 'node') { lastNodeArc = arc; lastNodeSize = size; }
-            dots.push({ x: px, y: py, s: size, r: rot, d: tint, role: role });
+            dots.push({ x: px, y: py, s: mark, r: rot, d: tint, role: role });
             if (dots.length >= maxDots) break;
           }
           idx++;
           t += localSpacing;
         }
         carry = t - segLen;
-        segStart += segLen;
       }
     }
 
