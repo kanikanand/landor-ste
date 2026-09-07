@@ -38,6 +38,21 @@ var CD = window.CD || {};
     return lerp(c, s, k);
   }
 
+  /* An image with a real alpha channel carries its own silhouette: exact to
+   * the pixel, and including the parts of the subject too dark to threshold —
+   * a black tyre against a black ground is the case that matters. Worth using
+   * whenever it is there. Returns null for an effectively opaque image, which
+   * is most of them. */
+  function alphaCoverage(px, n) {
+    var a = new Float32Array(n), cut = 0, i;
+    for (i = 0; i < n; i++) {
+      var v = px[i * 4 + 3];
+      a[i] = v / 255;
+      if (v < 250) cut++;
+    }
+    return cut > n * 0.02 ? a : null;
+  }
+
   /* Build the depth field from an RGBA pixel buffer, reading luminance as
    * depth. This is the fallback path: brightness is only a proxy for
    * geometry, and where a photograph's tones disagree with its form (a dark
@@ -49,7 +64,7 @@ var CD = window.CD || {};
    *           mask:  Field(1ch, 0..1 negative-space coverage),
    *           grad:  Field(2ch, dD/dx dD/dy) }
    */
-  function buildDepth(px, w, h, p) {
+  function buildDepth(px, w, h, p, alpha) {
     var i, n = w * h;
     var vals = new Float32Array(n);
 
@@ -59,7 +74,10 @@ var CD = window.CD || {};
       vals[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     }
 
-    return buildDepthFromValues(vals, w, h, p);
+    if (alpha === undefined) {
+      alpha = p.useAlpha === false ? null : alphaCoverage(px, n);
+    }
+    return buildDepthFromValues(vals, w, h, p, alpha);
   }
 
   /* The depth pipeline proper, from a single-channel 0..1 grid in which 1 is
@@ -67,9 +85,11 @@ var CD = window.CD || {};
    * model. Everything downstream (gradient, flow, streamlines, dots) only ever
    * sees the result of this, so the two sources are interchangeable.
    *
-   * `vals` is consumed; pass a copy if the caller still needs it.
+   * `vals` is consumed; pass a copy if the caller still needs it. `alpha`, if
+   * given, is the subject's own coverage and is used as the silhouette in
+   * place of a threshold.
    */
-  function buildDepthFromValues(vals, w, h, p) {
+  function buildDepthFromValues(vals, w, h, p, alpha) {
     var i, x, y, n = w * h;
     var depth = new CD.Field(w, h, 1);
     var d = depth.data;
@@ -84,30 +104,51 @@ var CD = window.CD || {};
       for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.imageContrast);
     }
 
-    /* 3. depth smoothing. This is what turns a noisy photograph into a
-     *    surface: streamlines can only be continuous if depth is continuous. */
-    depth.blur(p.depthSmoothing, 3);
-
-    /* 4. depth contrast — separates near from far, steepening the relief. */
-    if (p.depthContrast !== 1) {
-      for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.depthContrast);
-    }
-
-    /* 5. threshold carves the negative space. Everything under the threshold
-     *    is *nothing* — pure background, not a dark dot. The remaining range
-     *    is renormalised so the full dot-size range is still usable. */
+    /* 3. SILHOUETTE, and it has to be taken here — before the relief blur.
+     *
+     *    Smoothing depth is what turns a noisy photograph into a continuous
+     *    surface, but it also spreads a lit subject out into a dark
+     *    background. A mask read after that blur is a dilated one: at the
+     *    default smoothing the silhouette gains a fifth of the subject's area
+     *    in ground that was never part of it, and dots end up floating off
+     *    the object. Taken before, the edge is where the picture says it is,
+     *    and relief smoothing can go as high as the contours need without
+     *    touching it.
+     *
+     *    The mask gets its own small blur — enough to settle a noisy edge and
+     *    no more. */
     var mask = new CD.Field(w, h, 1);
     var m = mask.data;
-    var t = p.threshold, inv = 1 / Math.max(1e-4, 1 - t);
-    var soft = 0.05;
-    for (i = 0; i < n; i++) {
-      m[i] = smoothstep(t, t + soft, d[i]);
-      d[i] = clamp((d[i] - t) * inv, 0, 1);
+
+    if (alpha) {
+      for (i = 0; i < n; i++) m[i] = alpha[i];
+    } else {
+      var edge = depth.clone();
+      edge.blur(p.maskSmoothing === undefined ? 1 : p.maskSmoothing, 2);
+      var mt = p.maskThreshold === undefined ? p.threshold : p.maskThreshold;
+      for (i = 0; i < n; i++) m[i] = smoothstep(mt, mt + 0.05, edge.data[i]);
     }
     /* feather the mask edge slightly so contours die out instead of snapping */
     mask.blur(1, 1);
 
-    /* 6. gradient of depth (Sobel) — the source of the flow field. */
+    /* 4. relief smoothing. Streamlines can only be continuous if depth is
+     *    continuous, and this is what buys that — now at no cost to the
+     *    silhouette, which is already decided. */
+    depth.blur(p.depthSmoothing, 3);
+
+    /* 5. depth contrast — separates near from far, steepening the relief. */
+    if (p.depthContrast !== 1) {
+      for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.depthContrast);
+    }
+
+    /* 6. the depth floor. Everything under it flattens to zero relief, and
+     *    the remaining range is renormalised so the full dot-size range is
+     *    still usable. This no longer carves the silhouette — that is the
+     *    mask's job, above. */
+    var t = p.threshold, inv = 1 / Math.max(1e-4, 1 - t);
+    for (i = 0; i < n; i++) d[i] = clamp((d[i] - t) * inv, 0, 1);
+
+    /* 7. gradient of depth (Sobel) — the source of the flow field. */
     var grad = new CD.Field(w, h, 2);
     var gd = grad.data;
     for (y = 0; y < h; y++) {
@@ -267,6 +308,7 @@ var CD = window.CD || {};
     return { x: Math.cos(a), y: Math.sin(a), a: a };
   }
 
+  CD.alphaCoverage = alphaCoverage;
   CD.buildDepth = buildDepth;
   CD.buildRegion = buildRegion;
   CD.buildDepthFromValues = buildDepthFromValues;

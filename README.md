@@ -44,9 +44,9 @@ The image is not treated as brightness to be halftoned. It is treated as a
 D(x, y)        black = far away,  white = close
 ```
 
-Depth decides four things: where dots exist at all, how big each one is, how
-densely they pack, and how the surface reads as form. Everything below the
-threshold is negative space — genuine background, not a dark dot.
+Depth decides how big each dot is, how densely they pack, and how the surface
+reads as form. It does *not* decide where dots exist — the silhouette is field
+3's job, and keeping the two apart matters more than it sounds. See below.
 
 ### Field 2 — flow
 
@@ -135,6 +135,28 @@ subject onto the background read as a filter applied to the picture. Multiplied
 by the silhouette they stop at the subject's edge *and* at the wipe, which is
 what makes a partial overlay look deliberate.
 
+**The silhouette is read before the relief is smoothed**, and that ordering is
+load-bearing. Smoothing depth is what turns a noisy photograph into a
+continuous surface, but it also spreads a lit subject out into a dark
+background — so a mask taken after it is a dilated one. Measured on a test
+frame at the default smoothing: the mask gained 2,351 pixels of ground that
+was never part of the subject, and a thin feature six pixels wide (a gun
+barrel, a tow hook, a panel edge) went from fully retained at smoothing 4 to
+*entirely erased* at smoothing 6. That is what dots floating off the object
+look like from the inside.
+
+Taken before the blur, the silhouette is where the picture says it is, and it
+no longer moves at all as relief smoothing changes — verified constant from
+smoothing 0 through 24. **Silhouette cleanup** is now the only control that
+can move it, which is the point: it is one knob, it is labelled, and 0 gives a
+razor edge.
+
+If the image carries an **alpha channel**, that is used instead, and nothing
+beats it: on the same test frame the alpha silhouette landed within 2 pixels
+of the true object and kept both the thin barrel and a black tyre that
+luminance drops entirely. A cutout PNG is the single best thing you can feed
+this tool.
+
 Region sits on its own pipeline stage, between depth and flow. It costs one
 multiply over the analysis grid, so dragging a wipe slider never rebuilds the
 depth field — but the tracer and the dots both read it, so the contours retrace
@@ -222,11 +244,13 @@ across all shape types; the remainder is antialiasing on dot edges.
 **Depth source** — Estimate depth (Depth Anything V2 instead of luminance),
 Show depth map (field 1 as a greyscale underlay).
 
+**Silhouette** — Use image alpha, Silhouette cut, Silhouette cleanup.
+
 **Overlay** — Show photograph, Photo fade, Partial overlay (the wipe), Wipe
 position / angle / softness, Edge dissolve.
 
-**Image** — Threshold (carves the negative space), Contrast, Invert depth
-(for a subject lit dark-on-light).
+**Image** — Depth floor (where the relief starts; no longer carves the
+silhouette), Contrast, Invert depth (for a subject lit dark-on-light).
 
 **Depth** — Depth exaggeration (displaces each dot along the depth gradient;
 this is the relief that makes the bands bulge towards the viewer rather than
@@ -252,14 +276,37 @@ lit like a depth map: a single strong light, a dark background, and the subject
 falling off into shadow at its edges. Studio portraits and product shots on
 black work best.
 
-- Start with **Depth smoothing** — raise it until the contours stop breaking
-  into small closed loops and start reading as bands.
-- Then set **Threshold** so the background is fully black and the subject's
-  silhouette is where you want it.
+- Set the **silhouette** first, and independently: **Silhouette cut** so the
+  background drops out, **Silhouette cleanup** as low as the edge tolerates.
+  Nothing you do afterwards will move it.
+- Then **Depth smoothing** — raise it until the contours stop breaking into
+  small closed loops and start reading as bands. It is free now: it costs
+  structure but not silhouette.
 - **Flow strength** below about 0.5 is where the piece stops being a contour
   map and starts being a striped halftone; both are useful.
 - If the subject is dark against a light ground, turn on **Invert depth**
   first — nothing else will behave until the near/far sense is right.
+
+### When the dots wander instead of tracking the subject
+
+Big lazy loops that ignore panel lines and wheel arches mean the structure the
+contours follow has been smoothed away. Gradient energy — the signal the flow
+field is built from — measures 100% unsmoothed, 66% at smoothing 4 and 55% at
+smoothing 10. For a clean render rather than a noisy photograph:
+
+| control | value | why |
+|---|---|---|
+| Silhouette cleanup | 0 | a render has no edge noise to settle |
+| Depth smoothing | 2–4 | keeps panel lines in the gradient |
+| Flow coherence | 1–3 | diffuses direction without smearing it |
+| Depth exaggeration | 0 | stops dots sliding off their own contour |
+| Randomness | 0–0.05 | precision, not texture |
+| Dot size / spacing | small and tight | detail needs somewhere to land |
+
+Turning **Estimate depth** on matters most here. A render's tyres and shadowed
+recesses are near-black, and luminance reads them as background at any
+threshold — so the wheels, which carry the best structure in a vehicle shot,
+come out empty.
 
 Where a photograph's brightness genuinely disagrees with its geometry — a dark
 iris on a lit face, a specular highlight in a crease — luminance depth will

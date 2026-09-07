@@ -24,6 +24,7 @@ var CD = window.CD || {};
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
     dep: null, region: null, flow: null, lines: [], dots: [],
+    hasAlpha: false,     // the source carries its own silhouette
     modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
     modelBusy: false,
     modelToken: 0,       // bumped on every new image, to drop stale estimates
@@ -184,13 +185,9 @@ var CD = window.CD || {};
      * else: it lands on the same analysis grid and every control below still
      * means what it meant. While an estimate is still loading this falls
      * through to luminance, so there is always something on screen. */
-    if (p.modelDepth && state.modelDepth) {
-      var md = state.modelDepth;
-      state.dep = CD.buildDepthFromValues(
-        CD.resampleGray(md.data, md.w, md.h, fw, fh), fw, fh, p);
-      return;
-    }
-
+    /* The source is rasterised at the analysis resolution either way: the
+     * luminance path needs its pixels, and both paths want its alpha, which
+     * is the exact silhouette when the image carries one. */
     var c = document.createElement('canvas');
     c.width = fw; c.height = fh;
     var g = c.getContext('2d');
@@ -198,7 +195,18 @@ var CD = window.CD || {};
     g.imageSmoothingQuality = 'high';
     g.drawImage(state.srcCanvas, 0, 0, fw, fh);
     var px = g.getImageData(0, 0, fw, fh).data;
-    state.dep = CD.buildDepth(px, fw, fh, p);
+
+    var alpha = p.useAlpha === false ? null : CD.alphaCoverage(px, fw * fh);
+    state.hasAlpha = !!alpha;
+
+    if (p.modelDepth && state.modelDepth) {
+      var md = state.modelDepth;
+      state.dep = CD.buildDepthFromValues(
+        CD.resampleGray(md.data, md.w, md.h, fw, fh), fw, fh, p, alpha);
+      return;
+    }
+
+    state.dep = CD.buildDepth(px, fw, fh, p, alpha);
   }
 
   /* Field 3. The silhouette the depth threshold carved, narrowed to the area
@@ -461,6 +469,7 @@ var CD = window.CD || {};
     e.textContent = state.lines.length.toLocaleString() + ' contours · ' +
       state.dots.length.toLocaleString() + ' dots · ' +
       Math.round(state.timing[quality] || 0) + ' ms' +
+      (state.hasAlpha && state.params.useAlpha !== false ? ' · alpha silhouette' : '') +
       (quality === 'draft' ? ' (preview)' : '');
   }
 

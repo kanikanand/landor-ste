@@ -28,6 +28,22 @@ var CD = window.CD || {};
       ]
     },
     {
+      group: 'Silhouette', hint: 'Where the subject ends. Read before any relief smoothing.',
+      controls: [
+        { key: 'useAlpha', label: 'Use image alpha', type: 'toggle', def: true, stage: 'depth',
+          help: 'A cutout carries an exact silhouette, including parts too dark ' +
+                'to threshold. Used automatically when the image has one.' },
+        { key: 'maskThreshold', label: 'Silhouette cut', min: 0, max: 0.95, step: 0.01,
+          def: 0.06, stage: 'depth',
+          help: 'The luminance that counts as subject rather than background. ' +
+                'Ignored when an alpha silhouette is in use.' },
+        { key: 'maskSmoothing', label: 'Silhouette cleanup', min: 0, max: 8, step: 1, def: 1,
+          stage: 'depth',
+          help: 'Settles a noisy edge. Keep it low — this is the one blur that ' +
+                'can push the silhouette off the subject.' }
+      ]
+    },
+    {
       group: 'Overlay', hint: 'Dot part of the subject; leave the rest showing.',
       controls: [
         { key: 'showPhoto', label: 'Show photograph', type: 'toggle', def: false,
@@ -58,8 +74,9 @@ var CD = window.CD || {};
     {
       group: 'Image', hint: 'The photograph, before it becomes a surface.',
       controls: [
-        { key: 'threshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
-          help: 'Everything below this is negative space — pure background, no dots.' },
+        { key: 'threshold', label: 'Depth floor', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
+          help: 'Where the relief starts from. Everything below flattens to zero ' +
+                'depth; the silhouette is cut separately, above.' },
         { key: 'imageContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
         { key: 'invert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
           help: 'Use when the subject is lit dark-on-light.' }
