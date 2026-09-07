@@ -19,6 +19,58 @@ var CD = window.CD || {};
 
   var clamp = CD.clamp, lerp = CD.lerp;
 
+  /* --------------------------------------------------------------------------
+   * One signal, three channels.
+   *
+   * Depth is a single number, and there are three ways to spend it: the dot's
+   * size, its colour and its opacity. Spending all three at once — which is
+   * what happens when they all read depth at full strength — saturates. Near
+   * dots come out big AND bright AND solid, far ones disappear on every axis
+   * at the same rate, and everything between flattens into the ends.
+   *
+   * Giving each channel its own amount is what lets depth read as colour over
+   * dots of one size, or as size in one flat colour, or any mix of the two.
+   * At amounts 1 / 1 / 0 this is exactly the old behaviour.
+   * ------------------------------------------------------------------------*/
+  function amount(v, dflt) {
+    return clamp(v === undefined ? dflt : v, 0, 1);
+  }
+
+  /* Interpolate, but return the endpoints exactly. lerp(1, v, 1) is v to
+   * within a rounding error, and a rounding error is enough to move a dot
+   * across a colour-bucket boundary — so at full strength the channel hands
+   * back the value untouched and the default path stays identical to the one
+   * before the channels existed. */
+  function blend(base, v, amt) {
+    if (amt >= 1) return v;
+    if (amt <= 0) return base;
+    return lerp(base, v, amt);
+  }
+
+  /* Written into a scratch object rather than returned fresh, because this
+   * runs for every candidate position — including the many that are rejected
+   * before a dot is ever built. The result must be consumed before the next
+   * call: do not hold on to it. */
+  var CH = { scale: 1, c: 1, a: 1 };
+
+  function channels(d, tone, p) {
+    var dc = clamp(d, 0, 1);
+
+    /* size: the old curve, faded towards uniform as the amount drops */
+    var k = Math.pow(dc, p.sizeFalloff);
+    CH.scale = blend(1, lerp(0.22, 1.0, k), amount(p.sizeDepth, 1));
+
+    /* colour: from depth, or from the picture's own tone when asked, faded
+     * towards the near colour as the amount drops */
+    var base = (p.tintFromImage && tone !== undefined) ? clamp(tone, 0, 1) : dc;
+    CH.c = blend(1, base, amount(p.colorDepth, 1));
+
+    /* opacity: off by default, because it is the channel that most easily
+     * turns a halftone into haze */
+    CH.a = blend(1, dc, amount(p.fadeDepth, 0));
+    return CH;
+  }
+
   /* Coverage threshold a dot must clear. At full dissolve a dot survives on
    * almost nothing, because its size is being scaled away long before it gets
    * there; at zero the old hard half-coverage edge is back. */
@@ -40,10 +92,12 @@ var CD = window.CD || {};
     return size * lerp(1, k, clamp(dissolve, 0, 1));
   }
 
-  /* Each dot: {x, y, s (radius in px), r (radians), d (depth 0..1)} */
+  /* Each dot: {x, y, s (radius in px), r (radians), d (depth 0..1),
+   *             c (colour parameter 0..1), a (opacity 0..1)} */
   function buildDots(ctx) {
     var lines = ctx.lines;
     var depth = ctx.depth, grad = ctx.grad, mask = ctx.mask, flow = ctx.flow;
+    var tone = ctx.tone;
     var s = ctx.fieldScale;
     var p = ctx.params;
     var rng = ctx.rng;
@@ -73,11 +127,11 @@ var CD = window.CD || {};
           var fx = x * s, fy = y * s;
           var m = mask.sample(fx, fy, 0);
           var d = depth.sample(fx, fy, 0);
+          var ch = channels(d, tone ? tone.sample(fx, fy, 0) : undefined, p);
 
-          /* size: depth drives the base, size variation adds the scatter */
-          var base = p.dotSize * lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff));
+          /* size: the depth channel drives the base, size variation scatters it */
           var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
-          var size = dissolveSize(base * vary, m, p.edgeDissolve, gate);
+          var size = dissolveSize(p.dotSize * ch.scale * vary, m, p.edgeDissolve, gate);
 
           /* Local spacing: dots crowd together where the surface faces the
            * viewer. Near dots are also the biggest, so the step is floored at
@@ -87,7 +141,7 @@ var CD = window.CD || {};
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
           localSpacing = Math.max(size * 2.15, localSpacing);
 
-          if (m > gate && size > 0.16) {
+          if (m > gate && size > 0.16 && ch.a >= 0.02) {
             /* rotation follows the contour */
             var dir = CD.dirAt(flow, fx, fy);
             var rot = Math.atan2(dir.y, dir.x);
@@ -115,7 +169,7 @@ var CD = window.CD || {};
               px += ux * jt; py += uy * jt;
             }
 
-            dots.push({ x: px, y: py, s: size, r: rot, d: d });
+            dots.push({ x: px, y: py, s: size, r: rot, d: d, c: ch.c, a: ch.a });
             if (dots.length >= maxDots) break;
           }
           t += localSpacing;
@@ -142,6 +196,7 @@ var CD = window.CD || {};
    * ------------------------------------------------------------------------*/
   function buildGridDots(ctx) {
     var depth = ctx.depth, grad = ctx.grad, mask = ctx.mask, flow = ctx.flow;
+    var tone = ctx.tone;
     var s = ctx.fieldScale;
     var p = ctx.params;
     var rng = ctx.rng;
@@ -182,10 +237,11 @@ var CD = window.CD || {};
         if (m <= gate) continue;
 
         var d = depth.sample(fx, fy, 0);
-        var base = p.dotSize * lerp(0.22, 1.0, Math.pow(d, p.sizeFalloff));
+        var ch = channels(d, tone ? tone.sample(fx, fy, 0) : undefined, p);
         var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
-        var size = dissolveSize(base * vary, m, p.edgeDissolve, gate);
+        var size = dissolveSize(p.dotSize * ch.scale * vary, m, p.edgeDissolve, gate);
         if (size <= 0.16) continue;
+        if (ch.a < 0.02) continue;   // invisible; not worth exporting either
 
         var dir = CD.dirAt(flow, fx, fy);
         var rot = Math.atan2(dir.y, dir.x) + (rng() - 0.5) * 2 * jitter * 0.9;
@@ -205,12 +261,27 @@ var CD = window.CD || {};
           py += (rng() - 0.5) * 2 * jitter * step * 0.5;
         }
 
-        dots.push({ x: px, y: py, s: size, r: rot, d: d });
+        dots.push({ x: px, y: py, s: size, r: rot, d: d, c: ch.c, a: ch.a });
         if (dots.length >= maxDots) break;
       }
     }
 
     return dots;
+  }
+
+  /* Canvas and SVG must bucket identically or the export stops matching what
+   * you saw, so the scheme lives here and both call it. Colour keeps the old
+   * floor-into-N scheme; opacity is rounded onto the endpoints so 1 stays 1. */
+  var COLOR_BUCKETS = 32, ALPHA_BUCKETS = 8;
+
+  function bucketOf(dot, cb, ab) {
+    var c = dot.c === undefined ? dot.d : dot.c;
+    var a = dot.a === undefined ? 1 : dot.a;
+    var ci = Math.floor(clamp(c, 0, 1) * cb);
+    if (ci > cb - 1) ci = cb - 1;
+    if (ci < 0) ci = 0;
+    var ai = Math.round(clamp(a, 0, 1) * (ab - 1));
+    return ci * ab + ai;
   }
 
   /* Depth -> colour ramp. Far end of the surface sits close to the background
@@ -238,7 +309,11 @@ var CD = window.CD || {};
     return '#' + ((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1);
   }
 
+  CD.COLOR_BUCKETS = COLOR_BUCKETS;
+  CD.ALPHA_BUCKETS = ALPHA_BUCKETS;
+  CD.bucketOf = bucketOf;
   CD.gateFor = gateFor;
+  CD.channels = channels;
   CD.buildDots = buildDots;
   CD.buildGridDots = buildGridDots;
   CD.makeRamp = makeRamp;

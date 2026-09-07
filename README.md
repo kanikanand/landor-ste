@@ -197,6 +197,33 @@ wander; a lattice reads as a straight halftone there and holds still. Size,
 colour and relief still come from depth and rotation still comes from flow, so
 the two modes sit in the same picture without disagreeing.
 
+## Depth mapping
+
+Depth is one number, and there are three ways to spend it: the dot's **size**,
+its **colour** and its **opacity**. Spending all three at once — which is what
+happens when each reads depth at full strength — saturates. Near dots come out
+big *and* bright *and* solid, far ones disappear on every axis at the same
+rate, and everything in between flattens into the two ends.
+
+Each channel has its own amount, so you can decide what carries the form:
+
+| | |
+|---|---|
+| **Depth → size** | 0 leaves every dot the same size. The field stays a halftone of discrete points instead of swelling into solid fill where the surface is near. |
+| **Depth → colour** | 0 renders the whole field flat in the near colour. |
+| **Depth → opacity** | Off by default. It is the channel that most easily turns a halftone into haze, but at low amounts it softens a far edge better than either of the others. |
+
+Size and colour at full strength is the old behaviour, and it is still the
+default — the channels reproduce it exactly, not approximately. Turning size
+down and leaving colour up is usually the better-looking half of the trade:
+uniform dots keep the grain legible and let colour do the modelling, which is
+what the halftone references are actually doing.
+
+**Tint from image** switches the colour channel's source from depth to the
+picture's own tone. Size then carries the geometry while colour carries the
+photograph — two different signals on two different channels, which is the
+whole reason to keep them apart.
+
 ## The dot primitive
 
 This is deliberately **not** a generic particle system. A dot is a small piece
@@ -230,8 +257,14 @@ export is exactly what you saw.
   definition restyles every dot in the file at once.
 - Circles take a shorter path — a plain `<circle>` — which is smaller and
   friendlier to downstream tools.
-- Dots are grouped into colour buckets as `<g fill>` groups rather than
-  carrying a fill attribute each.
+- Dots are grouped into colour-and-opacity buckets as `<g fill>` groups rather
+  than carrying an attribute pair each. `fill-opacity` is emitted only when a
+  group is actually translucent, so an opaque render exports exactly as it did
+  before the opacity channel existed.
+- The canvas and the exporter call the *same* bucketing function, so the two
+  cannot drift apart. Opacity is rounded onto its endpoints rather than binned
+  to bucket midpoints — otherwise a fully opaque dot would land on the top
+  bucket's centre and every render would be imperceptibly translucent.
 
 Every dot arrives in Illustrator or Figma as an individual editable object.
 Export fidelity is verified against the canvas at 99.3–99.8% pixel overlap
@@ -263,6 +296,9 @@ Flow coherence.
 
 **Dots** — Grid fill, Shape, Dot size, Size variation, Size falloff, Dot
 spacing, Randomness.
+
+**Depth mapping** — Depth → size, Depth → colour, Depth → opacity, Tint from
+image.
 
 **Colour** — Background, Far colour, Near colour, Colour falloff.
 

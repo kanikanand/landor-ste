@@ -23,7 +23,7 @@ var CD = window.CD || {};
     srcName: 'sample',
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
-    dep: null, region: null, flow: null, lines: [], dots: [],
+    dep: null, region: null, tone: null, flow: null, lines: [], dots: [],
     hasAlpha: false,     // the source carries its own silhouette
     modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
     modelBusy: false,
@@ -198,6 +198,7 @@ var CD = window.CD || {};
 
     var alpha = p.useAlpha === false ? null : CD.alphaCoverage(px, fw * fh);
     state.hasAlpha = !!alpha;
+    state.tone = CD.toneField(px, fw, fh);
 
     if (p.modelDepth && state.modelDepth) {
       var md = state.modelDepth;
@@ -243,6 +244,7 @@ var CD = window.CD || {};
       grad: state.dep.grad,
       mask: state.region,
       flow: state.flow,
+      tone: state.tone,
       viewW: state.viewW, viewH: state.viewH,
       fieldScale: state.fieldScale,
       params: p,
@@ -274,28 +276,33 @@ var CD = window.CD || {};
 
     if (p.depthPreview && state.dep) drawDepthPreview();
 
-    /* Batch by colour bucket: one fillStyle change per bucket instead of one
-     * per dot, which is the difference between a stutter and an instant
-     * redraw at a hundred thousand dots. */
+    /* Batch by colour and opacity bucket: one state change per bucket instead
+     * of one per dot, which is the difference between a stutter and an instant
+     * redraw at a hundred thousand dots. Opacity is quantised so that a fully
+     * opaque dot lands exactly on 1 rather than on the top bucket's midpoint —
+     * otherwise every render would be imperceptibly translucent. */
     var dots = state.dots;
-    var buckets = 32, b, i;
-    var groups = new Array(buckets);
-    for (b = 0; b < buckets; b++) groups[b] = [];
+    var CB = CD.COLOR_BUCKETS, AB = CD.ALPHA_BUCKETS;
+    var groups = [], i, k;
+
     for (i = 0; i < dots.length; i++) {
-      b = (dots[i].d * buckets) | 0;
-      groups[b < 0 ? 0 : (b > buckets - 1 ? buckets - 1 : b)].push(dots[i]);
+      k = CD.bucketOf(dots[i], CB, AB);
+      (groups[k] || (groups[k] = [])).push(dots[i]);
     }
 
-    for (b = 0; b < buckets; b++) {
-      var list = groups[b];
-      if (!list.length) continue;
-      var col = state.ramp((b + 0.5) / buckets, p.colorGamma);
+    for (k = 0; k < CB * AB; k++) {
+      var list = groups[k];
+      if (!list) continue;
+      var cb = (k / AB) | 0, ab = k % AB;
+      var col = state.ramp((cb + 0.5) / CB, p.colorGamma);
+      ctx.globalAlpha = AB > 1 ? ab / (AB - 1) : 1;
       ctx.fillStyle = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
       for (i = 0; i < list.length; i++) {
         var d = list[i];
         CD.drawDot(ctx, d.x, d.y, d.s, d.r, p.shapeType);
       }
     }
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 

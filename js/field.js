@@ -53,6 +53,21 @@ var CD = window.CD || {};
     return cut > n * 0.02 ? a : null;
   }
 
+  /* The picture's own tonality, straight off the pixels — not inverted, not
+   * contrasted, not thresholded. Depth says how far away a point is; tone says
+   * how light it looked. They are different signals, and having both means a
+   * dot's colour can follow the photograph while its size follows the
+   * geometry. */
+  function toneField(px, w, h) {
+    var f = new CD.Field(w, h, 1), d = f.data, n = w * h;
+    for (var i = 0; i < n; i++) {
+      d[i] = 0.2126 * (px[i * 4] / 255) +
+             0.7152 * (px[i * 4 + 1] / 255) +
+             0.0722 * (px[i * 4 + 2] / 255);
+    }
+    return f;
+  }
+
   /* Build the depth field from an RGBA pixel buffer, reading luminance as
    * depth. This is the fallback path: brightness is only a proxy for
    * geometry, and where a photograph's tones disagree with its form (a dark
@@ -309,6 +324,7 @@ var CD = window.CD || {};
   }
 
   CD.alphaCoverage = alphaCoverage;
+  CD.toneField = toneField;
   CD.buildDepth = buildDepth;
   CD.buildRegion = buildRegion;
   CD.buildDepthFromValues = buildDepthFromValues;

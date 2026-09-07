@@ -34,7 +34,7 @@ var CD = window.CD || {};
     var dots = opts.dots;
     var ramp = opts.ramp;
     var gamma = opts.colorGamma;
-    var buckets = opts.buckets || 24;
+    var buckets = opts.buckets || CD.COLOR_BUCKETS;
     var isCircle = shape.round && !shape.custom;
 
     var out = [];
@@ -55,22 +55,27 @@ var CD = window.CD || {};
       out.push('</defs>');
     }
 
-    /* Group dots into a small number of colour buckets so the file is a
-     * handful of <g fill> groups rather than one fill attribute per dot. */
+    /* Group dots into a small number of colour-and-opacity buckets so the file
+     * is a handful of <g fill> groups rather than an attribute pair per dot.
+     * This is the bucketing the canvas uses, called from the same place, so
+     * the export cannot drift away from what you saw. */
+    var abuckets = CD.ALPHA_BUCKETS;
     var groups = [];
     var i;
-    for (i = 0; i < buckets; i++) groups.push([]);
     for (i = 0; i < dots.length; i++) {
-      var b = Math.min(buckets - 1, Math.max(0, Math.floor(dots[i].d * buckets)));
-      groups[b].push(dots[i]);
+      var k = CD.bucketOf(dots[i], buckets, abuckets);
+      (groups[k] || (groups[k] = [])).push(dots[i]);
     }
 
-    for (var g = 0; g < buckets; g++) {
+    for (var g = 0; g < buckets * abuckets; g++) {
       var list = groups[g];
-      if (!list.length) continue;
-      var mid = (g + 0.5) / buckets;
+      if (!list) continue;
+      var cb = (g / abuckets) | 0, ab = g % abuckets;
+      var mid = (cb + 0.5) / buckets;
       var col = CD.rgbToHex(ramp(mid, gamma));
-      out.push('<g fill="' + col + '">');
+      var op = abuckets > 1 ? ab / (abuckets - 1) : 1;
+      out.push('<g fill="' + col + '"' +
+               (op < 1 ? ' fill-opacity="' + num(op, 3) + '"' : '') + '>');
       for (i = 0; i < list.length; i++) {
         var dt = list[i];
         if (isCircle) {

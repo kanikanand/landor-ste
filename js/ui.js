@@ -117,9 +117,29 @@ var CD = window.CD || {};
         { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
         { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0.18, stage: 'dots' },
         { key: 'sizeFalloff', label: 'Size falloff', min: 0.3, max: 3.5, step: 0.05, def: 1.35, stage: 'dots',
-          help: 'How fast dots shrink as the surface recedes.' },
+          help: 'The curve of the depth \u2192 size channel; its strength is set ' +
+                'under Depth mapping.' },
         { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
         { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' }
+      ]
+    },
+    {
+      group: 'Depth mapping', hint: 'One signal, three channels. Spend it deliberately.',
+      controls: [
+        { key: 'sizeDepth', label: 'Depth \u2192 size', min: 0, max: 1, step: 0.01, def: 1,
+          stage: 'dots',
+          help: '0 leaves every dot the same size, whatever the depth.' },
+        { key: 'colorDepth', label: 'Depth \u2192 colour', min: 0, max: 1, step: 0.01, def: 1,
+          stage: 'dots',
+          help: '0 renders the whole field in the near colour, flat.' },
+        { key: 'fadeDepth', label: 'Depth \u2192 opacity', min: 0, max: 1, step: 0.01, def: 0,
+          stage: 'dots',
+          help: 'Off by default: opacity is the channel that most easily turns ' +
+                'a halftone into haze.' },
+        { key: 'tintFromImage', label: 'Tint from image', type: 'toggle', def: false,
+          stage: 'dots',
+          help: 'Colour follows the picture\u2019s own tone rather than depth, so ' +
+                'size can carry the geometry while colour carries the photograph.' }
       ]
     },
     {
