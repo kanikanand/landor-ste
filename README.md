@@ -134,17 +134,34 @@ brightness* — the lit face, without the dark hair and without the dark shirt.
 So the background is found instead, as the region that touches the frame and
 stays the tone the frame is, and everything the flood cannot reach is the
 subject, however light or dark. Two conditions hold the flood in: it may not
-stray far from the border's own median tone, and it may not cross a cell where
-the tone is turning sharply — at the rim of a lit face the face and the wall
-are the same grey, and only the steepness tells them apart.
+stray far in tone from the frame's own median, and it may not cross a cell
+where the tone is turning sharply — at the rim of a lit face the face and the
+wall are the same grey, and only the steepness tells them apart.
+
+Neither limit is guessed, and neither can be fixed. **Image contrast never
+reaches this** — it is a look control, and running it first destroys the
+signal: at 1.35 on a vignetted olive wall the wall's shadowed corner, the hair
+and the shirt all clip to zero together, and nothing can tell them apart after
+that. The slope barrier is a multiple of the grain the frame itself carries,
+because grain differs from photograph to photograph and the ratio does not.
+And the tone band is measured by the flood from its own result: a fixed
+tolerance cannot know that a vignetted wall drifts a fifth of the range across
+a picture, and the frame alone cannot tell it either, because on a portrait
+the shoulders run off the bottom edge and a quarter of the frame is subject.
+So the flood claims conservatively, takes the tone range of what it claimed —
+background, by construction — widens to it, and goes again, two or three
+times, until it stops growing.
 
 Where it leaks anyway the silhouette can come apart, so a morphological
 closing heals thin breaks and the isolation step keeps every substantial part
 rather than only the largest: a head cut off its shoulders is still the
 subject.
 
-- **Threshold**, **Contrast**, **Separation** — Separation is how far the
-  background may drift from the frame's own tone before the subject starts.
+- **Threshold**, **Contrast**, **Separation** — Separation is the one knob on
+  the flood: how far the background is allowed to spread in from the frame.
+  Raise it until the background is fully claimed; lower it before it starts
+  eating the subject. Threshold and Contrast shape this mode's depth field and
+  its fallback, but not the separation.
 - **Invert depth** — swaps which side of the separation is the subject. A
   boundary is the same curve from either side, so this does not move the edge
   line; it decides which side gets its specks dropped and its holes filled,
@@ -168,8 +185,8 @@ ridges bends together instead of breaking into islands. Because they are level
 sets of one function, two ridges cannot touch. Only the background side is
 drawn — the subject is left to the photograph.
 
-- **Threshold**, **Contrast**, **Separation** — the same flood that the edge
-  uses, deciding where the ridges stop.
+- **Threshold**, **Contrast**, **Separation** — the same flood the edge uses,
+  deciding where the ridges stop.
 - **Invert depth** — puts the ridges *on* the figure instead of the ground.
   The silhouette is flipped once it is finished rather than before, because
   isolating and hole-filling a flipped flood fills the subject in as a hole in
@@ -300,7 +317,10 @@ black work best.
   map and starts being a striped halftone; both are useful.
 - For **Edge** and **Fingerprint**, Separation is the control that matters:
   raise it until the background is fully claimed, and stop before it starts
-  eating into dark hair or a dark shirt.
+  eating into dark hair or a dark shirt. On a portrait against a plain wall
+  the useful range is wide — scored against a known silhouette, anything from
+  about 0.1 to 0.3 gives the same answer, and the failures either side are
+  obvious on the canvas.
 
 Where a photograph's brightness genuinely disagrees with its geometry — a dark
 iris on a lit face, a specular highlight in a crease — the contours will follow
