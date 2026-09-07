@@ -38,9 +38,14 @@ var CD = window.CD || {};
   var MODE_KEYS = {
     surface: {
       threshold: 'sThreshold', imageContrast: 'sContrast',
-      depthSmoothing: 'sSmoothing', depthExaggeration: 'sDepth',
-      lineSpacing: 'sLineSpacing',
-      dotSize: 'sDotSize', dotSpacing: 'sDotSpacing', nodeScale: 'sNodeScale'
+      depthExaggeration: 'sDepth', depthContrast: 'sDepthContrast',
+      depthSmoothing: 'sSmoothing',
+      lineDensity: 'sLineDensity', lineSpacing: 'sLineSpacing',
+      flowStrength: 'sFlowStrength', flowDistortion: 'sFlowDistortion',
+      flowAngle: 'sFlowAngle', flowSmoothing: 'sFlowCoherence',
+      dotSize: 'sDotSize', sizeVariation: 'sSizeVariation',
+      sizeFalloff: 'sSizeFalloff', dotSpacing: 'sDotSpacing',
+      randomness: 'sRandomness', nodeScale: 'sNodeScale'
     },
     edge: {
       threshold: 'eThreshold', imageContrast: 'eContrast',
@@ -85,17 +90,37 @@ var CD = window.CD || {};
       ]
     },
     {
+      /* v1's full set. Holding these constant made the panel shorter and the
+       * tool poorer: almost every one of them is a control a real look
+       * actually moves — flow strength to 0 and distortion to 1 is a
+       * different picture entirely, and size variation at 0 is a different
+       * halftone. Defaults are still v1's, so the opening render is v1's. */
       group: 'Surface', mode: 'surface',
       controls: [
-        { key: 'sThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth' },
+        { key: 'sThreshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
+          help: 'Everything below this is negative space — pure background, no dots.' },
         { key: 'sContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
         { key: 'sDepth', label: 'Depth', min: 0, max: 30, step: 0.1, def: 6, stage: 'dots',
           help: 'Displaces each dot along the depth gradient. This is the relief.' },
+        { key: 'sDepthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth',
+          help: 'Steepens near against far.' },
         { key: 'sSmoothing', label: 'Smoothing', min: 0, max: 30, step: 1, def: 10, stage: 'depth',
           help: 'Turns a noisy photo into a continuous surface. Contours need this.' },
+        { key: 'sLineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines' },
         { key: 'sLineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines' },
+        { key: 'sFlowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow',
+          help: '0 = straight lines at the base angle, 1 = pure depth contours.' },
+        { key: 'sFlowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow' },
+        { key: 'sFlowAngle', label: 'Base angle', min: 0, max: 180, step: 1, def: 0, stage: 'flow',
+          help: 'Direction the lines fall back to where the surface is flat.' },
+        { key: 'sFlowCoherence', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow',
+          help: 'Diffuses direction into flat regions so lines stay continuous.' },
         { key: 'sDotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
+        { key: 'sSizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0.18, stage: 'dots' },
+        { key: 'sSizeFalloff', label: 'Size falloff', min: 0.3, max: 3.5, step: 0.05, def: 1.35, stage: 'dots',
+          help: 'How fast dots shrink as the surface recedes.' },
         { key: 'sDotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
+        { key: 'sRandomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' },
         { key: 'sNodeScale', label: 'Node scale', min: 1, max: 8, step: 0.1, def: 2.2, stage: 'dots' }
       ]
     },
@@ -128,11 +153,10 @@ var CD = window.CD || {};
     }
   ];
 
-  /* Held constant rather than exposed. The first block is what the surface
-   * renderer has always used — the values v1 shipped with — so surface mode
-   * still renders exactly what it rendered, with fewer knobs in front of it.
-   * The second block is the same set standing in for the two modes that do
-   * not read depth at all, plus the safety limits and the seed. */
+  /* Held constant rather than exposed. Surface overrides nearly all of these
+   * from its own group; what is left standing is the set the edge and the
+   * fingerprint never shape — they read a depth field they do not sculpt and
+   * run no flow field at all — plus the safety limits and the seed. */
   var FIXED = {
     invert: false,
     depthContrast: 1.6,
@@ -239,7 +263,17 @@ var CD = window.CD || {};
     SCHEMA.forEach(function (g) {
       var sec = el('section', 'group');
       sec.dataset.mode = g.mode || '';
-      sec.appendChild(el('h2', null, g.group));
+      /* Fold a group you are not working in. With every mode on, the full set
+       * is taller than a laptop window; folding is what keeps the panel the
+       * height of the screen without taking controls away to get there. */
+      var head = el('h2', null, g.group);
+      head.tabIndex = 0;
+      head.title = 'Click to fold';
+      head.addEventListener('click', function () { sec.classList.toggle('folded'); });
+      head.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); head.click(); }
+      });
+      sec.appendChild(head);
       var body = el('div', 'group-body');
       if (g.cols) body.style.gridTemplateColumns = 'repeat(' + g.cols + ', 1fr)';
       sec.appendChild(body);

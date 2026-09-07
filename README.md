@@ -101,13 +101,24 @@ Everything under [The idea](#the-idea): depth contours wrapping the form,
 oriented dots whose size, spacing and colour all come off the depth field.
 This is v1, unchanged.
 
-- **Threshold**, **Contrast** — the photograph, before it becomes a surface.
+- **Threshold**, **Contrast**, **Depth contrast** — the photograph, before and
+  as it becomes a surface.
 - **Depth** — displaces each dot along the depth gradient. This is the relief
   that makes the bands bulge towards the viewer rather than read as a flat
   contour map.
 - **Smoothing** — turns a noisy photograph into a continuous surface. Contours
   need this.
-- **Line spacing**, **Dot size**, **Dot spacing**, **Node scale**.
+- **Line density**, **Line spacing** — how many contours and how far apart.
+- **Flow strength** (0 = straight lines at the base angle, 1 = pure depth
+  contours), **Flow distortion**, **Base angle**, **Flow coherence**.
+- **Dot size**, **Size variation**, **Size falloff**, **Dot spacing**,
+  **Randomness**, **Node scale**.
+
+That is v1's whole set. An earlier pass held most of it constant to shorten
+the panel, which made the tool poorer rather than simpler: flow strength at 0
+with distortion at 1 is a different picture, and size variation at 0 is a
+different halftone. Every default is still v1's, so the opening render is
+v1's.
 
 ### Edge
 
@@ -243,8 +254,10 @@ shade slightly differently.
 
 The panel is a column that owns the window height: the loader at the top, the
 download at the bottom, and the controls between them. A mode's own group only
-appears while that mode is on, and controls sit two to a row, so all three
-modes' controls fit at once without scrolling.
+appears while that mode is on, and controls sit two to a row. Click any group
+heading to fold it — with all three modes on the full set is taller than a
+laptop window, and folding is what keeps the panel the height of the screen
+without taking controls away to get there.
 
 **Picture** — Show image (the photograph behind the dots, and in the exported
 SVG; off by default, so the opening view is v1's), Background, Far colour,
@@ -256,9 +269,9 @@ Near colour.
 
 **Surface / Edge / Fingerprint** — each mode's own group, as above.
 
-Held constant rather than exposed, at the values v1 shipped with: depth
-contrast, line density, flow strength, flow distortion, base angle, flow
-coherence, size variation, size falloff, randomness and colour falloff. Dot
+Held constant rather than exposed: **Invert depth** and **Colour falloff**,
+and — for the edge and fingerprint modes, which sculpt no depth field and run
+no flow field — the surface controls that would mean nothing to them. Dot
 spacing is floored at a little over one dot diameter, so the largest, densest
 dots cannot fuse into a solid line and collapse the halftone into fill.
 

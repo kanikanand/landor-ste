@@ -97,7 +97,21 @@ button.primary:hover { background: #ff3a48; border-color: #ff3a48; }
   text-transform: uppercase;
   color: var(--accent);
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
 }
+.group h2::after {
+  content: "\2013";              /* an en dash; a plus when folded */
+  font-size: 11px;
+  letter-spacing: 0;
+  opacity: .55;
+}
+.group.folded h2::after { content: "+"; }
+.group.folded .group-body { display: none; }
+.group h2:hover::after { opacity: 1; }
 
 /* Two controls to a row. A slider is a label, a number and a track; at this
  * width two of them sit side by side comfortably, and halving the row count
