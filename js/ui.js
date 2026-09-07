@@ -144,6 +144,11 @@ var CD = window.CD || {};
         { key: 'colorDepth', label: 'Depth \u2192 colour', min: 0, max: 1, step: 0.01, def: 1,
           stage: 'dots',
           help: '0 renders the whole field in the near colour, flat.' },
+        { key: 'densityDepth', label: 'Depth \u2192 density', min: 0, max: 1, step: 0.01, def: 1,
+          stage: 'lines',
+          help: '0 spaces the contours and the dots along them evenly across the ' +
+                'whole region, so a selected segment is covered the same in its ' +
+                'lights and its darks.' },
         { key: 'fadeDepth', label: 'Depth \u2192 opacity', min: 0, max: 1, step: 0.01, def: 0,
           stage: 'dots',
           help: 'Off by default: opacity is the channel that most easily turns ' +

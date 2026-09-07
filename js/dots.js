@@ -74,6 +74,14 @@ var CD = window.CD || {};
   /* Coverage threshold a dot must clear. At full dissolve a dot survives on
    * almost nothing, because its size is being scaled away long before it gets
    * there; at zero the old hard half-coverage edge is back. */
+  /* Smallest dot worth drawing, relative to the dot size rather than a fixed
+   * 0.16px: an absolute floor quietly culls a large share of a fine-grained
+   * render and none of a coarse one, which reads as the fine settings simply
+   * losing coverage. */
+  function minSizeFor(p) {
+    return Math.min(0.16, p.dotSize * 0.07);
+  }
+
   function gateFor(dissolve) {
     return 0.5 - 0.45 * clamp(dissolve || 0, 0, 1);
   }
@@ -108,6 +116,8 @@ var CD = window.CD || {};
     var maxDots = p.maxDots;
     var gate = gateFor(p.edgeDissolve);
     var along = amount(p.jitterAlong, 0.75);
+    var density = amount(p.densityDepth, 1);
+    var minSize = minSizeFor(p);
 
     for (var li = 0; li < lines.length && dots.length < maxDots; li++) {
       var pts = lines[li];
@@ -138,11 +148,12 @@ var CD = window.CD || {};
            * viewer. Near dots are also the biggest, so the step is floored at
            * a little over one diameter — otherwise the densest, largest dots
            * fuse into a solid line and the halftone reads as fill. */
-          var localSpacing = spacingBase * lerp(1.5, 0.68, d);
+          var localSpacing = spacingBase *
+            lerp(1, lerp(1.5, 0.68, d), density);
           localSpacing *= 1 + (rng() - 0.5) * 2 * jitter * 0.6;
           localSpacing = Math.max(size * 2.15, localSpacing);
 
-          if (m > gate && size > 0.16 && ch.a >= 0.02) {
+          if (m > gate && size > minSize && ch.a >= 0.02) {
             /* rotation follows the contour */
             var dir = CD.dirAt(flow, fx, fy);
             var rot = Math.atan2(dir.y, dir.x);
@@ -209,6 +220,7 @@ var CD = window.CD || {};
     var step = Math.max(1.2, p.dotSpacing);
     var rowStep = step * 0.866;                 // hexagonal packing
     var gate = gateFor(p.edgeDissolve);
+    var minSize = minSizeFor(p);
     var maxDots = p.maxDots;
 
     /* The lattice runs at the base angle, so it lines up with the contour
@@ -243,7 +255,7 @@ var CD = window.CD || {};
         var ch = channels(d, tone ? tone.sample(fx, fy, 0) : undefined, p);
         var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
         var size = dissolveSize(p.dotSize * ch.scale * vary, m, p.edgeDissolve, gate);
-        if (size <= 0.16) continue;
+        if (size <= minSize) continue;
         if (ch.a < 0.02) continue;   // invisible; not worth exporting either
 
         var dir = CD.dirAt(flow, fx, fy);

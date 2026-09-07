@@ -75,6 +75,8 @@ var CD = window.CD || {};
      * stopping mid-row. Lines and dots share this number so they agree about
      * where the region ends. */
     this.insideMin = ctx.insideMin !== undefined ? ctx.insideMin : 0.5;
+    this.densityAmt = p.densityDepth === undefined ? 1
+      : (p.densityDepth < 0 ? 0 : (p.densityDepth > 1 ? 1 : p.densityDepth));
     this.sepBase = Math.max(1.2, p.lineSpacing / Math.max(0.05, p.lineDensity));
     this.sepMin = this.sepBase * 0.6;
     this.sepMax = this.sepBase * 1.7;
@@ -92,10 +94,13 @@ var CD = window.CD || {};
   };
 
   /* Separation distance wanted at this point: tighter where the surface is
-   * near the camera, looser where it falls away. */
+   * near the camera, looser where it falls away — as much as Depth -> density
+   * asks for. At 0 the spacing is uniform and the bands cover a region evenly
+   * whatever its tone, which is what you want when the selection is a segment
+   * of the subject rather than a tonal range of it. */
   Tracer.prototype.sepAt = function (x, y) {
     var d = this.depthAt(x, y);
-    return lerp(this.sepMax, this.sepMin, d);
+    return lerp(this.sepBase, lerp(this.sepMax, this.sepMin, d), this.densityAmt);
   };
 
   Tracer.prototype.inside = function (x, y) {

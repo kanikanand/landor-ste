@@ -151,6 +151,16 @@ smoothing 0 through 24. **Silhouette cleanup** is now the only control that
 can move it, which is the point: it is one knob, it is labelled, and 0 gives a
 razor edge.
 
+The contrast curve is the other thing the silhouette has to come before, for
+the same reason on the other axis: **the curve clips**. At the default
+`imageContrast` of 1.35 a tone of 0.08 maps to exactly zero, so a shadow that
+is genuinely part of the subject was gone before any threshold could see it —
+measured on a five-band test frame, the deep-shadow band read **0% inside the
+silhouette at every mask threshold the tool offers**. The cut is now taken
+from the tone as it arrived, so lowering **Silhouette cut** actually reaches
+into the shadows: the same band now reads 100%. With **Invert depth** on the
+clipping removed the highlights instead; it is symmetric.
+
 If the image carries an **alpha channel**, that is used instead, and nothing
 beats it: on the same test frame the alpha silhouette landed within 2 pixels
 of the true object and kept both the thin barrel and a black tyre that
@@ -251,12 +261,39 @@ Each channel has its own amount, so you can decide what carries the form:
 | **Depth → size** | 0 leaves every dot the same size. The field stays a halftone of discrete points instead of swelling into solid fill where the surface is near. |
 | **Depth → colour** | 0 renders the whole field flat in the near colour. |
 | **Depth → opacity** | Off by default. It is the channel that most easily turns a halftone into haze, but at low amounts it softens a far edge better than either of the others. |
+| **Depth → density** | How much depth tightens the contour spacing and the dots along them. This is the channel that decides *how much of a region is covered at all*, as opposed to how the covering looks. |
 
 Size and colour at full strength is the old behaviour, and it is still the
 default — the channels reproduce it exactly, not approximately. Turning size
 down and leaving colour up is usually the better-looking half of the trade:
 uniform dots keep the grain legible and let colour do the modelling, which is
 what the halftone references are actually doing.
+
+### Covering a segment rather than a tonal range
+
+Density deserves its own note, because it is the one that surprises people.
+Contour separation and dot spacing were both modulated by depth with no way to
+turn it off, so a selected region was never covered evenly — it was covered in
+proportion to its brightness. Measured across five tonal bands of one object,
+with identical geometry in each and only the tone changing:
+
+| | dots, before | dots, at Depth → density 0 |
+|---|---|---|
+| blown highlight | 974 | 544 |
+| bright | 929 | 501 |
+| midtone | 355 | 477 |
+| dark | 212 | 514 |
+| deep shadow | 0 — outside the silhouette entirely | 569 |
+
+A **12.8× spread** across the bands, and a whole band missing. At density 0 the
+spread is **1.2×**. Add `Depth → size 0` and `Depth → colour 0` on top and ink
+coverage lands between 27.8% and 33.8% in every band from blown highlight to
+deep shadow — the segment treated as a segment, not as a tonal range that
+happens to sit inside one.
+
+Leave density at 1 when you want the classic halftone, where near surfaces
+carry more line. Take it to 0 when the selection is *this part of the object*
+and you want all of it.
 
 **Tint from image** switches the colour channel's source from depth to the
 picture's own tone. Size then carries the geometry while colour carries the
@@ -338,8 +375,8 @@ Flow coherence.
 spacing, Randomness, Jitter along (how much of that randomness runs along the
 contour rather than across it).
 
-**Depth mapping** — Depth → size, Depth → colour, Depth → opacity, Tint from
-image.
+**Depth mapping** — Depth → size, Depth → colour, Depth → opacity, Depth →
+density, Tint from image.
 
 **Colour** — Background, Far colour, Near colour, Colour falloff.
 
@@ -380,6 +417,8 @@ smoothing 10. For a clean render rather than a noisy photograph:
 | Relief coherence | 10+ | keeps neighbouring dots moving together |
 | Jitter along | 0.75–1 | randomness that does not break the lines |
 | Randomness | 0–0.05 | precision, not texture |
+| Depth → density | 0 | covers a chosen segment evenly, lights and darks alike |
+| Silhouette cut | 0.02 | now that it reaches into the shadows |
 | Dot size / spacing | small and tight | detail needs somewhere to land |
 
 Turning **Estimate depth** on matters most here. A render's tyres and shadowed

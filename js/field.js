@@ -114,12 +114,8 @@ var CD = window.CD || {};
       d[i] = p.invert ? 1 - vals[i] : vals[i];
     }
 
-    /* 2. image-level contrast, before anything structural happens. */
-    if (p.imageContrast !== 1) {
-      for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.imageContrast);
-    }
-
-    /* 3. SILHOUETTE, and it has to be taken here — before the relief blur.
+    /* 2. SILHOUETTE, and it has to be taken here — before the contrast curve
+     *    as well as before the relief blur.
      *
      *    Smoothing depth is what turns a noisy photograph into a continuous
      *    surface, but it also spreads a lit subject out into a dark
@@ -129,6 +125,17 @@ var CD = window.CD || {};
      *    the object. Taken before, the edge is where the picture says it is,
      *    and relief smoothing can go as high as the contours need without
      *    touching it.
+     *
+     *    The contrast curve is the other thing it has to come before, and for
+     *    the same reason in the other axis: the curve clips. At the default
+     *    imageContrast of 1.35 a tone of 0.08 maps to exactly zero, so a
+     *    shadow that is genuinely part of the subject is gone before any
+     *    threshold can see it and no setting recovers it. Measured on a
+     *    five-band test frame, the deep-shadow band read 0% inside the
+     *    silhouette at every mask threshold offered. Reading the tone as it
+     *    arrived — inverted if asked, nothing else — is what lets the cut
+     *    reach into the shadows. With Invert depth on, the same clipping
+     *    removes the highlights instead; it is symmetric.
      *
      *    The mask gets its own small blur — enough to settle a noisy edge and
      *    no more. */
@@ -145,6 +152,11 @@ var CD = window.CD || {};
     }
     /* feather the mask edge slightly so contours die out instead of snapping */
     mask.blur(1, 1);
+
+    /* 3. image-level contrast, now that the silhouette is safely decided. */
+    if (p.imageContrast !== 1) {
+      for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.imageContrast);
+    }
 
     /* 4. relief smoothing. Streamlines can only be continuous if depth is
      *    continuous, and this is what buys that — now at no cost to the
