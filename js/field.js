@@ -32,7 +32,11 @@ var CD = window.CD || {};
     return lerp(c, s, k);
   }
 
-  /* Build the depth field from an ImageData-like {data,width,height}.
+  /* Build the depth field from an RGBA pixel buffer, reading luminance as
+   * depth. This is the fallback path: brightness is only a proxy for
+   * geometry, and where a photograph's tones disagree with its form (a dark
+   * iris on a lit face, a specular in a crease) the contours follow the tones.
+   * `buildDepthFromValues` is the same pipeline fed a real depth map instead.
    *
    * params: imageContrast, threshold, invert, depthSmoothing, depthContrast
    * returns { depth: Field(1ch, raw 0..1 relief),
@@ -40,15 +44,33 @@ var CD = window.CD || {};
    *           grad:  Field(2ch, dD/dx dD/dy) }
    */
   function buildDepth(px, w, h, p) {
+    var i, n = w * h;
+    var vals = new Float32Array(n);
+
+    /* luminance -> depth. White is near, black is far, per the brief. */
+    for (i = 0; i < n; i++) {
+      var r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
+      vals[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    return buildDepthFromValues(vals, w, h, p);
+  }
+
+  /* The depth pipeline proper, from a single-channel 0..1 grid in which 1 is
+   * near and 0 is far — whether that came from luminance or from a depth
+   * model. Everything downstream (gradient, flow, streamlines, dots) only ever
+   * sees the result of this, so the two sources are interchangeable.
+   *
+   * `vals` is consumed; pass a copy if the caller still needs it.
+   */
+  function buildDepthFromValues(vals, w, h, p) {
     var i, x, y, n = w * h;
     var depth = new CD.Field(w, h, 1);
     var d = depth.data;
 
-    /* 1. luminance -> depth. White is near, black is far, per the brief. */
+    /* 1. orientation. Invert when the subject reads dark-on-light. */
     for (i = 0; i < n; i++) {
-      var r = px[i * 4] / 255, g = px[i * 4 + 1] / 255, b = px[i * 4 + 2] / 255;
-      var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      d[i] = p.invert ? 1 - lum : lum;
+      d[i] = p.invert ? 1 - vals[i] : vals[i];
     }
 
     /* 2. image-level contrast, before anything structural happens. */
@@ -189,6 +211,7 @@ var CD = window.CD || {};
   }
 
   CD.buildDepth = buildDepth;
+  CD.buildDepthFromValues = buildDepthFromValues;
   CD.buildFlow = buildFlow;
   CD.dirAt = dirAt;
   CD.contrastCurve = contrastCurve;

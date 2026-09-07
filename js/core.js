@@ -109,9 +109,61 @@ var CD = window.CD || {};
     return this;
   };
 
+  /* --------------------------------------------------------------------------
+   * Resample a single-channel Float32 grid to a new size.
+   *
+   * Downsampling averages the source rectangle each destination cell covers,
+   * rather than point-sampling it. That matters here: a depth map arrives at
+   * the model's resolution and has to land on the 420 px analysis grid, and a
+   * nearest or bilinear shrink would alias the very edges the flow field is
+   * about to differentiate. Upsampling falls back to bilinear.
+   * ------------------------------------------------------------------------*/
+  function resampleGray(src, sw, sh, dw, dh) {
+    var out = new Float32Array(dw * dh);
+    var x, y, i, j;
+
+    if (sw === dw && sh === dh) { out.set(src); return out; }
+
+    if (sw >= dw && sh >= dh) {
+      var xr = sw / dw, yr = sh / dh;
+      for (y = 0; y < dh; y++) {
+        var y0 = Math.floor(y * yr);
+        var y1 = Math.min(sh, Math.max(y0 + 1, Math.ceil((y + 1) * yr)));
+        for (x = 0; x < dw; x++) {
+          var x0 = Math.floor(x * xr);
+          var x1 = Math.min(sw, Math.max(x0 + 1, Math.ceil((x + 1) * xr)));
+          var acc = 0, n = 0;
+          for (j = y0; j < y1; j++) {
+            for (i = x0; i < x1; i++) { acc += src[j * sw + i]; n++; }
+          }
+          out[y * dw + x] = n ? acc / n : 0;
+        }
+      }
+      return out;
+    }
+
+    /* bilinear, on pixel centres */
+    var sx = sw / dw, sy = sh / dh;
+    for (y = 0; y < dh; y++) {
+      var fy = clamp((y + 0.5) * sy - 0.5, 0, sh - 1);
+      var iy = Math.floor(fy), ty = fy - iy;
+      var iy1 = iy + 1 < sh ? iy + 1 : iy;
+      for (x = 0; x < dw; x++) {
+        var fx = clamp((x + 0.5) * sx - 0.5, 0, sw - 1);
+        var ix = Math.floor(fx), tx = fx - ix;
+        var ix1 = ix + 1 < sw ? ix + 1 : ix;
+        var a = src[iy * sw + ix], b = src[iy * sw + ix1];
+        var c = src[iy1 * sw + ix], d = src[iy1 * sw + ix1];
+        out[y * dw + x] = lerp(lerp(a, b, tx), lerp(c, d, tx), ty);
+      }
+    }
+    return out;
+  }
+
   CD.clamp = clamp;
   CD.lerp = lerp;
   CD.smoothstep = smoothstep;
   CD.makeRng = makeRng;
   CD.Field = Field;
+  CD.resampleGray = resampleGray;
 })(CD);

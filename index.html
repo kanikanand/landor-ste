@@ -32,6 +32,9 @@
   <footer class="foot">
     <p><strong>Depth, not brightness.</strong> White reads as near, black as far.
        Threshold carves the black negative space; nothing is drawn there.</p>
+    <p>Luminance is only a proxy for depth. <em>Estimate depth</em> runs
+       Depth&nbsp;Anything&nbsp;V2 in the browser and feeds the pipeline real
+       geometry instead — served over http, and one download on first use.</p>
     <p>Rotation of every dot is <code>atan2(flow.y, flow.x)</code>, and flow is
        the depth gradient turned ninety degrees:
        <code>F = (-&part;D/&part;y, &part;D/&part;x)</code>.</p>
@@ -64,6 +67,7 @@
 <script src="js/shapes.js"></script>
 <script src="js/dots.js"></script>
 <script src="js/svgexport.js"></script>
+<script src="js/depthmodel.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/app.js"></script>
 </body>

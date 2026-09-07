@@ -14,6 +14,18 @@ var CD = window.CD || {};
 
   var SCHEMA = [
     {
+      group: 'Depth source', hint: 'Where field 1 comes from.',
+      controls: [
+        { key: 'modelDepth', label: 'Estimate depth (Depth Anything V2)', type: 'toggle',
+          def: false, stage: 'depth',
+          help: 'Reads geometry instead of brightness. First use downloads the ' +
+                'model; the page must be served over http, not opened as a file.' },
+        { key: 'depthPreview', label: 'Show depth map', type: 'toggle', def: false,
+          stage: 'draw',
+          help: 'Draws field 1 behind the dots, to check it. Not exported to SVG.' }
+      ]
+    },
+    {
       group: 'Image', hint: 'The photograph, before it becomes a surface.',
       controls: [
         { key: 'threshold', label: 'Threshold', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
@@ -105,7 +117,7 @@ var CD = window.CD || {};
     return e;
   }
 
-  /* Build the panel. onChange(stage) fires on every edit. */
+  /* Build the panel. onChange(stage, key) fires on every edit. */
   function buildPanel(root, params, onChange, hooks) {
     root.innerHTML = '';
     var refs = {};
@@ -127,7 +139,7 @@ var CD = window.CD || {};
           cb.checked = !!params[c.key];
           cb.addEventListener('change', function () {
             params[c.key] = cb.checked;
-            onChange(c.stage);
+            onChange(c.stage, c.key);
           });
           lab.appendChild(cb);
           lab.appendChild(el('span', null, c.label));
@@ -142,7 +154,7 @@ var CD = window.CD || {};
           ci.value = params[c.key];
           ci.addEventListener('input', function () {
             params[c.key] = ci.value;
-            onChange(c.stage);
+            onChange(c.stage, c.key);
           });
           top.appendChild(ci);
           row.appendChild(top);
@@ -159,7 +171,7 @@ var CD = window.CD || {};
               wrap.querySelectorAll('.shape-btn').forEach(function (o) {
                 o.classList.toggle('on', o.dataset.shape === name);
               });
-              onChange(c.stage);
+              onChange(c.stage, c.key);
             });
             if (params[c.key] === name) b.classList.add('on');
             return b;
@@ -207,7 +219,7 @@ var CD = window.CD || {};
           sl.addEventListener('input', function () {
             params[c.key] = parseFloat(sl.value);
             val.textContent = fmt(params[c.key], c.step);
-            onChange(c.stage);
+            onChange(c.stage, c.key);
           });
           row.appendChild(sl);
           refs[c.key] = {

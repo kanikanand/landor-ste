@@ -24,6 +24,9 @@ var CD = window.CD || {};
     viewW: 700, viewH: 700,
     fieldW: 0, fieldH: 0, fieldScale: 1,
     dep: null, flow: null, lines: [], dots: [],
+    modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
+    modelBusy: false,
+    modelToken: 0,       // bumped on every new image, to drop stale estimates
     ramp: null,
     dirty: 'depth',
     pendingFull: null,
@@ -36,6 +39,7 @@ var CD = window.CD || {};
   var canvasEl = null;
   var ctx = null;
   var draftTimer = null, fullTimer = null;
+  var previewCanvas = null;
 
   /* ==========================================================================
    * Source image
@@ -130,7 +134,16 @@ var CD = window.CD || {};
     if (typeof resizeCanvas === 'function' && canvasEl) {
       resizeCanvas(state.viewW, state.viewH);
     }
+
+    /* The depth estimate belongs to the old image. Bumping the token also
+     * retires any request still in flight, so its result cannot land on top
+     * of the new one. */
+    state.modelDepth = null;
+    state.modelBusy = false;
+    state.modelToken++;
+
     markDirty('depth');
+    if (state.params.modelDepth) ensureModelDepth();
   }
 
   function loadImageFile(file) {
@@ -166,6 +179,18 @@ var CD = window.CD || {};
 
   function stageDepth(p) {
     var fw = state.fieldW, fh = state.fieldH;
+
+    /* An estimated depth map replaces step 1 of the depth pipeline and nothing
+     * else: it lands on the same analysis grid and every control below still
+     * means what it meant. While an estimate is still loading this falls
+     * through to luminance, so there is always something on screen. */
+    if (p.modelDepth && state.modelDepth) {
+      var md = state.modelDepth;
+      state.dep = CD.buildDepthFromValues(
+        CD.resampleGray(md.data, md.w, md.h, fw, fh), fw, fh, p);
+      return;
+    }
+
     var c = document.createElement('canvas');
     c.width = fw; c.height = fh;
     var g = c.getContext('2d');
@@ -217,6 +242,8 @@ var CD = window.CD || {};
     ctx.fillStyle = p.background;
     ctx.fillRect(0, 0, state.viewW, state.viewH);
 
+    if (p.depthPreview && state.dep) drawDepthPreview();
+
     /* Batch by colour bucket: one fillStyle change per bucket instead of one
      * per dot, which is the difference between a stutter and an instant
      * redraw at a hundred thousand dots. */
@@ -240,6 +267,86 @@ var CD = window.CD || {};
       }
     }
     ctx.restore();
+  }
+
+  /* Field 1 as a greyscale underlay, masked by the negative space, so you can
+   * see what the contours are actually following — which is the only way to
+   * tell an estimated depth map from a luminance one at a glance. A viewing
+   * aid: the SVG export carries the dots, not this. */
+  function drawDepthPreview() {
+    var dep = state.dep, fw = dep.w, fh = dep.h, n = fw * fh;
+    if (!previewCanvas) previewCanvas = document.createElement('canvas');
+    if (previewCanvas.width !== fw || previewCanvas.height !== fh) {
+      previewCanvas.width = fw; previewCanvas.height = fh;
+    }
+    var g = previewCanvas.getContext('2d');
+    var img = g.createImageData(fw, fh);
+    var out = img.data, d = dep.depth.data, m = dep.mask.data;
+    for (var i = 0; i < n; i++) {
+      var v = Math.round(CD.clamp(d[i], 0, 1) * CD.clamp(m[i], 0, 1) * 255);
+      out[i * 4] = v; out[i * 4 + 1] = v; out[i * 4 + 2] = v; out[i * 4 + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(previewCanvas, 0, 0, state.viewW, state.viewH);
+    ctx.restore();
+  }
+
+  /* ==========================================================================
+   * Depth model
+   * ========================================================================*/
+
+  /* Estimate depth for the current image, once. Cached on the image, so
+   * toggling the control off and back on is free and no slider ever waits on
+   * the model. Everything is reported through the status bar because the
+   * first run has a model download in front of it. */
+  function ensureModelDepth() {
+    if (!state.srcCanvas || state.modelDepth || state.modelBusy) return;
+    if (!CD.DepthModel) { failModelDepth('Depth model module is missing.'); return; }
+
+    var reason = CD.DepthModel.unavailableReason();
+    if (reason) { failModelDepth(reason); return; }
+
+    var token = state.modelToken;
+    state.modelBusy = true;
+    status(CD.DepthModel.loaded()
+      ? 'Estimating depth…'
+      : 'Loading ' + CD.DepthModel.MODEL_ID + ' — first run downloads the model.');
+
+    CD.DepthModel.estimate(state.srcCanvas, function (pr) {
+      if (token !== state.modelToken) return;
+      if (pr.phase === 'download') {
+        status('Downloading depth model — ' + Math.round(pr.pct) + '% · ' + pr.backend);
+      } else if (pr.phase === 'infer') {
+        status('Estimating depth on ' + pr.backend + '…');
+      }
+    }).then(function (res) {
+      if (token !== state.modelToken) return;   // the image changed under us
+      state.modelBusy = false;
+      state.modelDepth = res;
+      status('Depth estimated · ' + res.backend + ' · ' + Math.round(res.ms) + ' ms · ' +
+             res.w + '\u00d7' + res.h);
+      markDirty('depth');
+    }).catch(function (e) {
+      if (token !== state.modelToken) return;
+      state.modelBusy = false;
+      console.error(e);
+      failModelDepth(e.message);
+    });
+  }
+
+  /* Drop back to luminance, with the control switched off and the reason
+   * shown. Silently rendering the fallback would read as the model working
+   * badly rather than as the model not being there. */
+  function failModelDepth(msg) {
+    state.params.modelDepth = false;
+    if (ui && ui.refs.modelDepth) ui.refs.modelDepth.set(false);
+    status(msg, true);
+    markDirty('depth');
   }
 
   /* ==========================================================================
@@ -462,7 +569,12 @@ var CD = window.CD || {};
     noLoop();
 
     ui = CD.UI.buildPanel(document.getElementById('controls'), state.params,
-      function (stage) { markDirty(stage); },
+      function (stage, key) {
+        /* Switching the model on is the one control that has to fetch
+         * something before its stage can be rebuilt. */
+        if (key === 'modelDepth' && state.params.modelDepth) ensureModelDepth();
+        markDirty(stage);
+      },
       { pickShape: function () { document.getElementById('shapeInput').click(); } });
 
     wireChrome();
