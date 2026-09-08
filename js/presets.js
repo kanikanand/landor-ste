@@ -9,17 +9,13 @@
  *   MODE    where the dots live relative to the subject
  *           surface | fingerprint | interaction
  *
- *   FILL    how they are laid out once they are there
- *           fluid (contours) | grid (lattice)
- *
  *   PHOTO   whether the photograph is there at all
  *           on | off,  plus Reveal for the hand-over between the two
  *
- * Three by two by two is twelve looks from four decisions, and every
- * combination is meaningful — a fingerprint can be gridded or fluid, a
- * surface treatment can reveal or not. Enumerating them as presets would
- * have given twelve buttons that each go stale the moment a new fill or a
- * new region source is added.
+ * There is deliberately no grid mode. A separate lattice fill was a fourth
+ * thing to learn that produced a stiffer result than simply turning the
+ * pattern's Grid-to-form slider down, which straightens the rows while still
+ * knowing where the subject is. One slider replaced a mode.
  *
  * A preset only ever writes LOOK parameters. Image parameters — polarity,
  * thresholds, contrast, smoothing — belong to auto.js, which reads them off
@@ -34,7 +30,7 @@ var CD = window.CD || {};
   /* Values a preset is allowed to set. Anything absent from this list is
    * either auto's (see Auto.OWNED) or the user's alone. */
   var OWNED = [
-    'regionSource', 'edgeBand', 'fieldSource', 'gridFill',
+    'regionSource', 'edgeBand', 'fieldSource',
     'showPhoto', 'photoFade', 'photoWipe', 'wipe', 'wipePosition',
     'wipeAngle', 'wipeFeather', 'edgeDissolve',
     'dotSize', 'dotSpacing', 'lineSpacing', 'lineDensity', 'sizeVariation',
@@ -106,14 +102,10 @@ var CD = window.CD || {};
 
   var ORDER = ['surface', 'fingerprint', 'interaction'];
 
-  /* A grid fill wants a slightly looser hand than a contour fill at the same
-   * numbers: a lattice reads as denser than strung-along-a-line dots do, and
-   * it has no arc length to hide a wide dot in. */
-  var GRID_TRIM = { dotSpacing: 1.25, sizeVariation: 0.6, randomness: 0.5 };
-
   /* Write a mode's look parameters into `params`, leaving everything auto
-   * owns exactly as it was. Returns the keys it touched. */
-  function applyMode(params, name, gridFill) {
+   * owns exactly as it was — a mode decides where the dots go, the image
+   * controls decide what the dots are reading. Returns the keys it touched. */
+  function applyMode(params, name) {
     var mode = MODES[name] || MODES.surface;
     var touched = [];
     Object.keys(mode.params).forEach(function (k) {
@@ -121,15 +113,6 @@ var CD = window.CD || {};
       params[k] = mode.params[k];
       touched.push(k);
     });
-
-    params.gridFill = !!gridFill;
-    touched.push('gridFill');
-
-    if (gridFill) {
-      Object.keys(GRID_TRIM).forEach(function (k) {
-        if (params[k] !== undefined) params[k] *= GRID_TRIM[k];
-      });
-    }
     return touched;
   }
 

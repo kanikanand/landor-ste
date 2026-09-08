@@ -14,210 +14,232 @@ var CD = window.CD || {};
    * tracer and the dots both read it, but the flow field never does. */
   var STAGES = ['depth', 'region', 'flow', 'lines', 'dots', 'draw'];
 
+  /* --------------------------------------------------------------------------
+   * The panel.
+   *
+   * Four questions, asked in the order you actually answer them:
+   *
+   *   1  IMAGE    what the tool is looking at in your picture
+   *   2  PLACE    where the dots go
+   *   3  PATTERN  what the dots look like
+   *   4  COLOUR
+   *
+   * Each section shows the few controls that matter and folds the rest away
+   * behind "More". Labels say what you will see change, not what the code
+   * does — a control called "Flow coherence" is only honest if you already
+   * know there is a flow field, and if you do not, it is a dice roll.
+   * ------------------------------------------------------------------------*/
   var SCHEMA = [
     {
-      group: 'Mode', hint: 'Four decisions. Everything below is optional.',
+      group: 'Image',
+      hint: 'What the tool sees in your picture. Everything else builds on this.',
       controls: [
-        { key: 'mode', label: 'Where the dots go', type: 'mode', def: 'surface',
-          stage: 'depth' },
-        { key: 'gridFill', label: 'How they are laid out', type: 'fill', def: false,
-          stage: 'dots' },
-        { key: 'autoTune', label: 'Auto-tune to the image', type: 'toggle', def: true,
+        { key: 'autoTune', label: 'Auto-adjust to this image', type: 'toggle', def: true,
           stage: 'depth',
-          help: 'Reads polarity, background level, tonal range and noise off the ' +
-                'picture and sets the thresholds, contrast and smoothing to match. ' +
-                'Turn it off to set them yourself in Advanced.' },
-        { key: 'showPhoto', label: 'Show photograph', type: 'toggle', def: true,
+          help: 'Reads the picture and sets brightness, contrast, the subject cutoff ' +
+                'and how much grain to ignore. Turn it off to set them by hand.' },
+        { key: 'exposure', label: 'Brightness', min: -0.45, max: 0.45, step: 0.01, def: 0,
+          stage: 'depth',
+          help: 'Lifts or lowers the whole picture before anything else reads it. ' +
+                'Use it when the subject sits too dark or too bright to separate.' },
+        { key: 'imageContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35,
+          stage: 'depth',
+          help: 'Separates light from dark. More contrast means the dots swing ' +
+                'harder between their near and far look.' },
+        { key: 'maskThreshold', label: 'Subject cutoff', min: 0, max: 0.95, step: 0.01,
+          def: 0.06, stage: 'depth',
+          help: 'How dark something can be and still count as the subject rather ' +
+                'than the background. Raise it if the background is picking up ' +
+                'dots; lower it if parts of the subject are being missed.' }
+      ],
+      more: [
+        { key: 'invert', label: 'Subject is darker than the background', type: 'toggle',
+          def: false, stage: 'depth',
+          help: 'Flips which end reads as near. Nothing else behaves until this ' +
+                'is right.' },
+        { key: 'depthSmoothing', label: 'Smooth out grain', min: 0, max: 30, step: 1,
+          def: 10, stage: 'depth',
+          help: 'More treats fine detail as noise and gives long, calm lines. ' +
+                'Less keeps panel edges and creases, at the risk of the lines ' +
+                'breaking up on a rough photo.' },
+        { key: 'maskDespeckle', label: 'Clean up the outline', min: 0, max: 8, step: 1,
+          def: 2, stage: 'depth',
+          help: 'Fills specks and holes in the subject’s edge. Raise it on a ' +
+                'grainy or heavily compressed picture; it is what stops the lines ' +
+                'shattering into short fragments.' },
+        { key: 'maskSmoothing', label: 'Soften the outline', min: 0, max: 8, step: 1,
+          def: 1, stage: 'depth',
+          help: 'Blurs the edge of the subject. Keep it low — this is the one ' +
+                'control that can push the outline off the subject.' },
+        { key: 'depthContrast', label: 'Depth separation', min: 0.2, max: 4, step: 0.05,
+          def: 1.6, stage: 'depth',
+          help: 'Pushes near and far further apart, so the form reads more ' +
+                'strongly through the dots.' },
+        { key: 'threshold', label: 'Flatten the shadows', min: 0, max: 0.95, step: 0.01,
+          def: 0.13, stage: 'depth',
+          help: 'Everything below this reads as fully far. Raise it to stop dark ' +
+                'areas carrying any modelling.' },
+        { key: 'useAlpha', label: 'Use the cut-out if the file has one', type: 'toggle',
+          def: true, stage: 'depth',
+          help: 'A transparent PNG already knows its own outline exactly, ' +
+                'including parts too dark to find any other way.' },
+        { key: 'modelDepth', label: 'Estimate real depth (downloads a model)',
+          type: 'toggle', def: false, stage: 'depth',
+          help: 'Works out the actual geometry instead of guessing from ' +
+                'brightness. Slow the first time, and needs the page served over ' +
+                'http rather than opened as a file.' },
+        { key: 'depthPreview', label: 'Show me what it sees', type: 'toggle', def: false,
+          stage: 'draw',
+          help: 'Draws the depth reading behind the dots. The quickest way to ' +
+                'tell whether the image settings are right before touching ' +
+                'anything else.' }
+      ]
+    },
+
+    {
+      group: 'Place',
+      hint: 'Where the dots sit, and how much of the photograph stays.',
+      controls: [
+        { key: 'mode', label: 'Dots go', type: 'mode', def: 'surface', stage: 'depth' },
+        { key: 'showPhoto', label: 'Show the photograph', type: 'toggle', def: true,
           stage: 'draw' },
-        { key: 'wipe', label: 'Reveal', type: 'toggle', def: true, stage: 'region',
-          help: 'Hands the subject from the photograph to the dots across a line.' },
+        { key: 'wipe', label: 'Reveal across the picture', type: 'toggle', def: true,
+          stage: 'region',
+          help: 'Hands the subject over from photograph to dots across a line, ' +
+                'instead of dotting all of it.' },
         { key: 'wipePosition', label: 'Reveal position', min: 0, max: 1, step: 0.01,
-          def: 0.45, stage: 'region' },
-        { key: 'wipeAngle', label: 'Reveal angle', min: 0, max: 360, step: 1, def: 0,
-          stage: 'region' },
+          def: 0.45, stage: 'region',
+          help: 'Where the hand-over falls.' },
+        { key: 'wipeAngle', label: 'Reveal direction', min: 0, max: 360, step: 1, def: 0,
+          stage: 'region',
+          help: 'Which way the dots run in from. Add 180 to swap sides.' }
+      ],
+      more: [
+        { key: 'wipeFeather', label: 'Reveal softness', min: 0, max: 0.6, step: 0.01,
+          def: 0.16, stage: 'region',
+          help: 'How gradually the hand-over happens. 0 is a hard line.' },
+        { key: 'photoWipe', label: 'Photograph fades as dots arrive', min: 0, max: 1,
+          step: 0.01, def: 0.85, stage: 'draw',
+          help: 'Takes the picture away where the dots take over. At 0 the ' +
+                'photograph stays at full strength underneath them.' },
+        { key: 'photoFade', label: 'Hold the photograph back', min: 0, max: 1, step: 0.01,
+          def: 0, stage: 'draw',
+          help: 'Sinks the whole picture towards the background colour, so the ' +
+                'dots carry more of it.' },
+        { key: 'edgeBand', label: 'Band width', min: 4, max: 60, step: 1, def: 12,
+          stage: 'region',
+          help: 'How far the pattern reaches either side of the outline. Only ' +
+                'used by Fingerprint and Interaction.' }
+      ]
+    },
+
+    {
+      group: 'Pattern',
+      hint: 'What the dots look like and how they are laid out.',
+      controls: [
         { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.0,
           stage: 'dots' },
-        { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 4,
-          stage: 'dots' },
-        { key: 'colorNear', label: 'Dot colour', type: 'color', def: '#ff2233',
-          stage: 'draw' },
-        { key: 'background', label: 'Background', type: 'color', def: '#000000',
+        { key: 'dotSpacing', label: 'Space between dots', min: 1.5, max: 40, step: 0.25,
+          def: 4, stage: 'dots' },
+        { key: 'lineSpacing', label: 'Space between rows', min: 2, max: 60, step: 0.5,
+          def: 7, stage: 'lines' },
+        { key: 'flowStrength', label: 'Grid ↔ follows the form', min: 0, max: 1,
+          step: 0.01, def: 0.9, stage: 'flow',
+          help: 'At 0 the rows run straight and the dots read as a grid. At 1 ' +
+                'they wrap around the form. Everything in between is a mix.' },
+        { key: 'edgeDissolve', label: 'Fade out at the edges', min: 0, max: 1, step: 0.01,
+          def: 0.85, stage: 'dots',
+          help: 'Shrinks dots away as they reach the edge of where they are ' +
+                'allowed, instead of stopping mid-row.' }
+      ],
+      more: [
+        { key: 'shapeType', label: 'Dot shape', type: 'shape', def: 'circle', stage: 'draw' },
+        { key: 'flowAngle', label: 'Grid angle', min: 0, max: 360, step: 1, def: 0,
+          stage: 'flow',
+          help: 'Which way the straight rows run. Also the direction the dots ' +
+                'line up along.' },
+        { key: 'rowAlign', label: 'Line dots up across rows', min: 0, max: 1, step: 0.01,
+          def: 0, stage: 'dots',
+          help: 'Locks the dots to a shared rhythm so they form columns as well ' +
+                'as rows. Strongest where the rows run straight.' },
+        { key: 'flowSmoothing', label: 'How far the form carries', min: 0, max: 24,
+          step: 1, def: 6, stage: 'flow',
+          help: 'Spreads the direction of the form into flat areas. Low values ' +
+                'let those areas fall back to the grid angle.' },
+        { key: 'lineDensity', label: 'Row density', min: 0.2, max: 4, step: 0.05, def: 1,
+          stage: 'lines' },
+        { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01,
+          def: 0.12, stage: 'dots',
+          help: 'Random spread in dot size, for texture.' },
+        { key: 'randomness', label: 'Scatter', min: 0, max: 1, step: 0.01, def: 0.06,
+          stage: 'dots',
+          help: 'Loosens the spacing so the pattern stops looking mechanical.' },
+        { key: 'jitterAlong', label: 'Scatter along the rows', min: 0, max: 1, step: 0.01,
+          def: 0.75, stage: 'dots',
+          help: 'Keeps the scatter running along each row rather than across it. ' +
+                'Across is what breaks a row up; along barely shows.' },
+        { key: 'flowDistortion', label: 'Wobble', min: 0, max: 1, step: 0.01, def: 0.04,
+          stage: 'flow',
+          help: 'Bends the rows with slow noise so they breathe instead of ' +
+                'reading like a survey map.' },
+        { key: 'depthExaggeration', label: 'Push dots out with the form', min: 0, max: 30,
+          step: 0.1, def: 2, stage: 'dots',
+          help: 'Shifts dots outwards where the surface bulges towards you, so ' +
+                'the rows read as relief rather than as a flat map.' },
+        { key: 'reliefCoherence', label: 'Keep that push smooth', min: 0, max: 24,
+          step: 1, def: 10, stage: 'depth',
+          help: 'Neighbouring dots move together. Low values let them move ' +
+                'differently and tear the rows apart.' },
+        { key: 'sizeFalloff', label: 'Size falloff curve', min: 0.3, max: 3.5, step: 0.05,
+          def: 1.35, stage: 'dots',
+          help: 'How quickly dots shrink as the surface turns away.' },
+        { key: 'gridFill', label: 'Ignore the rows, use a flat lattice', type: 'toggle',
+          def: false, stage: 'dots',
+          help: 'Drops the flowing rows entirely for an even lattice. The Grid ' +
+                'end of the slider above usually reads better, because it still ' +
+                'knows where the form is.' }
+      ]
+    },
+
+    {
+      group: 'Depth response',
+      hint: 'What changes as the surface goes from near to far.',
+      controls: [
+        { key: 'sizeDepth', label: 'Size follows depth', min: 0, max: 1, step: 0.01, def: 1,
+          stage: 'dots',
+          help: '0 keeps every dot the same size. Uniform dots stay legible as ' +
+                'dots; large ones merge into fill where the surface is near.' },
+        { key: 'colorDepth', label: 'Colour follows depth', min: 0, max: 1, step: 0.01,
+          def: 1, stage: 'dots',
+          help: '0 renders everything in the dot colour, flat.' },
+        { key: 'densityDepth', label: 'Density follows depth', min: 0, max: 1, step: 0.01,
+          def: 1, stage: 'lines',
+          help: '0 covers the whole area evenly, lights and darks alike. Use it ' +
+                'when you have chosen an area and want all of it.' }
+      ],
+      more: [
+        { key: 'fadeDepth', label: 'Fade follows depth', min: 0, max: 1, step: 0.01, def: 0,
+          stage: 'dots',
+          help: 'Far dots go transparent. Easily overdone.' },
+        { key: 'tintFromImage', label: 'Take colour from the photograph', type: 'toggle',
+          def: false, stage: 'dots',
+          help: 'Dots pick up the picture’s own tone, so size can carry the ' +
+                'form while colour carries the image.' }
+      ]
+    },
+
+    {
+      group: 'Colour',
+      hint: '',
+      controls: [
+        { key: 'colorNear', label: 'Dot colour', type: 'color', def: '#ff2233', stage: 'draw' },
+        { key: 'background', label: 'Background', type: 'color', def: '#000000', stage: 'draw' }
+      ],
+      more: [
+        { key: 'colorFar', label: 'Far colour', type: 'color', def: '#4a0410', stage: 'draw',
+          help: 'What the dots fade towards as the surface recedes.' },
+        { key: 'colorGamma', label: 'Colour falloff', min: 0.3, max: 3, step: 0.05, def: 1,
           stage: 'draw' }
-      ]
-    },
-    {
-      advanced: true, group: 'Depth source', hint: 'Where field 1 comes from.',
-      controls: [
-        { key: 'modelDepth', label: 'Estimate depth (Depth Anything V2)', type: 'toggle',
-          def: false, stage: 'depth',
-          help: 'Reads geometry instead of brightness. First use downloads the ' +
-                'model; the page must be served over http, not opened as a file.' },
-        { key: 'depthPreview', label: 'Show depth map', type: 'toggle', def: false,
-          stage: 'draw',
-          help: 'Draws field 1 behind the dots, to check it. Not exported to SVG.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Silhouette', hint: 'Where the subject ends. Read before any relief smoothing.',
-      controls: [
-        { key: 'useAlpha', label: 'Use image alpha', type: 'toggle', def: true, stage: 'depth',
-          help: 'A cutout carries an exact silhouette, including parts too dark ' +
-                'to threshold. Used automatically when the image has one.' },
-        { key: 'maskThreshold', label: 'Silhouette cut', min: 0, max: 0.95, step: 0.01,
-          def: 0.06, stage: 'depth',
-          help: 'The luminance that counts as subject rather than background. ' +
-                'Ignored when an alpha silhouette is in use.' },
-        { key: 'maskDespeckle', label: 'Silhouette despeckle', min: 0, max: 8, step: 1,
-          def: 2, stage: 'depth',
-          help: 'Majority vote over the neighbourhood: erases islands and fills ' +
-                'pinholes left by noise or compression, without moving the edge. ' +
-                'Raise it for low-quality plates — a speckled silhouette is what ' +
-                'shatters the contours into fragments.' },
-        { key: 'maskSmoothing', label: 'Silhouette cleanup', min: 0, max: 8, step: 1, def: 1,
-          stage: 'depth',
-          help: 'Softens the edge. Keep it low — this is the one control that ' +
-                'can push the silhouette off the subject. For noise, reach for ' +
-                'despeckle instead; it costs nothing.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Overlay', hint: 'Dot part of the subject; leave the rest showing.',
-      controls: [
-        { key: 'showPhoto', label: 'Show photograph', type: 'toggle', def: false,
-          stage: 'draw',
-          help: 'Draws the source image under the dots. Where no dots fall it ' +
-                'is simply not covered, so it stays the original picture.' },
-        { key: 'photoFade', label: 'Photo fade', min: 0, max: 1, step: 0.01, def: 0,
-          stage: 'draw',
-          help: 'Sinks the photograph towards the background colour, so the ' +
-                'dots carry more of the image.' },
-        { key: 'photoWipe', label: 'Photo hand-over', min: 0, max: 1, step: 0.01,
-          def: 0.85, stage: 'draw',
-          help: 'Takes the photograph back down across the same edge the dots ' +
-                'come up on, so the subject is handed from one representation ' +
-                'to the other. 0 leaves the picture at full strength underneath.' },
-        { key: 'wipe', label: 'Partial overlay', type: 'toggle', def: false,
-          stage: 'region',
-          help: 'Confines the dots to one side of a line, intersected with the ' +
-                'subject so they never run onto the background.' },
-        { key: 'wipePosition', label: 'Wipe position', min: 0, max: 1, step: 0.01,
-          def: 0.5, stage: 'region' },
-        { key: 'wipeAngle', label: 'Wipe angle', min: 0, max: 360, step: 1, def: 0,
-          stage: 'region',
-          help: 'The direction the dots run towards. Add 180 to swap sides.' },
-        { key: 'wipeFeather', label: 'Wipe softness', min: 0, max: 0.6, step: 0.01,
-          def: 0.12, stage: 'region' },
-        { key: 'edgeDissolve', label: 'Edge dissolve', min: 0, max: 1, step: 0.01,
-          def: 0.7, stage: 'dots',
-          help: 'Shrinks dots away across the edge instead of cutting them off ' +
-                'mid-row. This is what sells the transition.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Image', hint: 'The photograph, before it becomes a surface.',
-      controls: [
-        { key: 'threshold', label: 'Depth floor', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
-          help: 'Where the relief starts from. Everything below flattens to zero ' +
-                'depth; the silhouette is cut separately, above.' },
-        { key: 'exposure', label: 'Exposure', min: -0.45, max: 0.45, step: 0.01, def: 0,
-          stage: 'depth',
-          help: 'Centres the subject before contrast stretches it. Off-centre ' +
-                'tones clip when stretched, and a clipped region has no gradient ' +
-                'for the contours to follow.' },
-        { key: 'imageContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
-        { key: 'invert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
-          help: 'Use when the subject is lit dark-on-light.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Depth', hint: 'Field 1. Black is far, white is near.',
-      controls: [
-        { key: 'depthExaggeration', label: 'Depth exaggeration', min: 0, max: 30, step: 0.1, def: 3, stage: 'dots',
-          help: 'Shifts each dot along the smoothed relief field. This is the ' +
-                'relief. It now applies across the whole surface rather than ' +
-                'only at edges, so it bites harder per unit than it used to.' },
-        { key: 'depthContrast', label: 'Depth contrast', min: 0.2, max: 4, step: 0.05, def: 1.6, stage: 'depth',
-          help: 'Steepens near against far.' },
-        { key: 'depthSmoothing', label: 'Depth smoothing', min: 0, max: 30, step: 1, def: 10, stage: 'depth',
-          help: 'Turns a noisy photo into a continuous surface. Contours need this.' },
-        { key: 'reliefCoherence', label: 'Relief coherence', min: 0, max: 24, step: 1, def: 10,
-          stage: 'depth',
-          help: 'How far the relief displacement is smoothed before it is applied. ' +
-                'Low values let neighbouring dots shift by different amounts and ' +
-                'tear the contours apart.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Contours', hint: 'Field 2. Flow runs along the iso-depth lines.',
-      controls: [
-        { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines' },
-        { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines' },
-        { key: 'flowStrength', label: 'Flow strength', min: 0, max: 1, step: 0.01, def: 0.88, stage: 'flow',
-          help: '0 = straight lines at the base angle, 1 = pure depth contours.' },
-        { key: 'flowDistortion', label: 'Flow distortion', min: 0, max: 1, step: 0.01, def: 0.06, stage: 'flow' },
-        { key: 'flowAngle', label: 'Base angle', min: 0, max: 180, step: 1, def: 0, stage: 'flow',
-          help: 'Direction the lines fall back to where the surface is flat.' },
-        { key: 'flowSmoothing', label: 'Flow coherence', min: 0, max: 24, step: 1, def: 6, stage: 'flow',
-          help: 'Diffuses direction into flat regions so lines stay continuous.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Dots', hint: 'Oriented primitives, not particles.',
-      controls: [
-        { key: 'gridFill', label: 'Grid fill', type: 'toggle', def: false, stage: 'dots',
-          help: 'A lattice instead of dots strung along the contours. Reads as ' +
-                'a halftone on broad flat surfaces, where contours wander.' },
-        { key: 'shapeType', label: 'Shape', type: 'shape', def: 'circle', stage: 'draw' },
-        { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.2, stage: 'dots' },
-        { key: 'sizeVariation', label: 'Size variation', min: 0, max: 1, step: 0.01, def: 0.18, stage: 'dots' },
-        { key: 'sizeFalloff', label: 'Size falloff', min: 0.3, max: 3.5, step: 0.05, def: 1.35, stage: 'dots',
-          help: 'The curve of the depth \u2192 size channel; its strength is set ' +
-                'under Depth mapping.' },
-        { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 5, stage: 'dots' },
-        { key: 'randomness', label: 'Randomness', min: 0, max: 1, step: 0.01, def: 0.12, stage: 'dots' },
-        { key: 'rowAlign', label: 'Row align', min: 0, max: 1, step: 0.01, def: 0,
-          stage: 'dots',
-          help: 'Locks the dots to a common phase so they line up across ' +
-                'neighbouring contours as well as along them — bands of dots ' +
-                'become a lattice lying on the surface. Follows Base angle.' },
-        { key: 'jitterAlong', label: 'Jitter along', min: 0, max: 1, step: 0.01, def: 0.75,
-          stage: 'dots',
-          help: 'How much of the randomness runs along the contour rather than ' +
-                'across it. Along is nearly invisible; across is what breaks the ' +
-                'lines up. 1 keeps the lines intact.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Depth mapping', hint: 'One signal, three channels. Spend it deliberately.',
-      controls: [
-        { key: 'sizeDepth', label: 'Depth \u2192 size', min: 0, max: 1, step: 0.01, def: 1,
-          stage: 'dots',
-          help: '0 leaves every dot the same size, whatever the depth.' },
-        { key: 'colorDepth', label: 'Depth \u2192 colour', min: 0, max: 1, step: 0.01, def: 1,
-          stage: 'dots',
-          help: '0 renders the whole field in the near colour, flat.' },
-        { key: 'densityDepth', label: 'Depth \u2192 density', min: 0, max: 1, step: 0.01, def: 1,
-          stage: 'lines',
-          help: '0 spaces the contours and the dots along them evenly across the ' +
-                'whole region, so a selected segment is covered the same in its ' +
-                'lights and its darks.' },
-        { key: 'fadeDepth', label: 'Depth \u2192 opacity', min: 0, max: 1, step: 0.01, def: 0,
-          stage: 'dots',
-          help: 'Off by default: opacity is the channel that most easily turns ' +
-                'a halftone into haze.' },
-        { key: 'tintFromImage', label: 'Tint from image', type: 'toggle', def: false,
-          stage: 'dots',
-          help: 'Colour follows the picture\u2019s own tone rather than depth, so ' +
-                'size can carry the geometry while colour carries the photograph.' }
-      ]
-    },
-    {
-      advanced: true, group: 'Colour', hint: 'Negative space stays black.',
-      controls: [
-        { key: 'background', label: 'Background', type: 'color', def: '#000000', stage: 'draw' },
-        { key: 'colorFar', label: 'Far colour', type: 'color', def: '#4a0410', stage: 'draw' },
-        { key: 'colorNear', label: 'Near colour', type: 'color', def: '#ff2233', stage: 'draw' },
-        { key: 'colorGamma', label: 'Colour falloff', min: 0.3, max: 3, step: 0.05, def: 1, stage: 'draw' }
       ]
     }
   ];
@@ -239,11 +261,17 @@ var CD = window.CD || {};
     edgeBand: 12
   };
 
+  /* Every control in a group, shown or folded away. */
+  function eachControl(g, fn) {
+    (g.controls || []).forEach(fn);
+    (g.more || []).forEach(fn);
+  }
+
   function defaults() {
     var p = {};
     Object.keys(FIXED).forEach(function (k) { p[k] = FIXED[k]; });
     SCHEMA.forEach(function (g) {
-      g.controls.forEach(function (c) { p[c.key] = c.def; });
+      eachControl(g, function (c) { p[c.key] = c.def; });
     });
     return p;
   }
@@ -278,21 +306,6 @@ var CD = window.CD || {};
     root.innerHTML = '';
     var refs = {};
 
-    /* Everything the four decisions already cover is folded away. It is all
-     * still here and still live — a preset writes into the same parameters
-     * these controls edit — but a first pass should not have to walk past
-     * thirty sliders to find the one that matters. */
-    var adv = el('section', 'advanced');
-    var advToggle = el('button', 'adv-toggle', 'Advanced controls');
-    var advBody = el('div', 'adv-body');
-    advBody.hidden = true;
-    advToggle.addEventListener('click', function () {
-      advBody.hidden = !advBody.hidden;
-      advToggle.classList.toggle('open', !advBody.hidden);
-    });
-    adv.appendChild(advToggle);
-    adv.appendChild(advBody);
-
     SCHEMA.forEach(function (g) {
       var sec = el('section', 'group');
       var head = el('div', 'group-head');
@@ -300,7 +313,24 @@ var CD = window.CD || {};
       if (g.hint) head.appendChild(el('p', 'hint', g.hint));
       sec.appendChild(head);
 
-      g.controls.forEach(function (c) {
+      /* Detail lives with the thing it details, not in one pile at the
+       * bottom: if you are already in Pattern wondering about scatter, the
+       * scatter controls should be one click away and nowhere else. */
+      var moreBody = null;
+      if (g.more && g.more.length) {
+        var moreToggle = el('button', 'more-toggle', 'More ' + g.group.toLowerCase() +
+                            ' controls');
+        moreBody = el('div', 'more-body');
+        moreBody.hidden = true;
+        moreToggle.addEventListener('click', function () {
+          moreBody.hidden = !moreBody.hidden;
+          moreToggle.classList.toggle('open', !moreBody.hidden);
+        });
+        g._toggle = moreToggle;
+        g._body = moreBody;
+      }
+
+      var render = function (c, into) {
         var row = el('div', 'ctrl');
 
         if (c.type === 'toggle') {
@@ -354,26 +384,6 @@ var CD = window.CD || {};
               o.classList.toggle('on', o.dataset.mode === v);
             });
             if (CD.Presets.MODES[v]) modeHint.textContent = CD.Presets.MODES[v].hint;
-          } });
-
-        } else if (c.type === 'fill') {
-          row.appendChild(el('label', null, c.label));
-          var fwrap = el('div', 'shape-row');
-          [['Fluid', false], ['Grid', true]].forEach(function (pair) {
-            var fb = el('button', 'shape-btn', pair[0]);
-            fb.dataset.fill = pair[1] ? 'grid' : 'fluid';
-            fb.addEventListener('click', function () {
-              params[c.key] = pair[1];
-              onChange(c.stage, c.key);
-            });
-            if (!!params[c.key] === pair[1]) fb.classList.add('on');
-            fwrap.appendChild(fb);
-          });
-          row.appendChild(fwrap);
-          addRef(refs, c.key, { set: function (v) {
-            fwrap.querySelectorAll('.shape-btn').forEach(function (o) {
-              o.classList.toggle('on', o.dataset.fill === (v ? 'grid' : 'fluid'));
-            });
           } });
 
         } else if (c.type === 'shape') {
@@ -444,12 +454,18 @@ var CD = window.CD || {};
         }
 
         if (c.help) row.appendChild(el('p', 'help', c.help));
-        sec.appendChild(row);
-      });
+        into.appendChild(row);
+      };
 
-      (g.advanced ? advBody : root).appendChild(sec);
+      (g.controls || []).forEach(function (c) { render(c, sec); });
+      if (moreBody) {
+        (g.more || []).forEach(function (c) { render(c, moreBody); });
+        sec.appendChild(g._toggle);
+        sec.appendChild(moreBody);
+      }
+
+      root.appendChild(sec);
     });
-    root.appendChild(adv);
 
     return {
       refs: refs,
@@ -471,8 +487,42 @@ var CD = window.CD || {};
     return v.toFixed(Math.min(dp, 2));
   }
 
+  /* A plain-text record of what produced this render, using the same words
+   * the panel uses. Written from the schema so it cannot drift out of date. */
+  function describe(params, auto) {
+    var out = ['Contour Dots — settings', ''];
+    if (params.mode && CD.Presets && CD.Presets.MODES[params.mode]) {
+      out.push('Mode: ' + CD.Presets.MODES[params.mode].label +
+               '  (' + CD.Presets.MODES[params.mode].hint + ')');
+      out.push('');
+    }
+    SCHEMA.forEach(function (g) {
+      out.push(g.group.toUpperCase());
+      eachControl(g, function (c) {
+        if (c.type === 'mode') return;
+        var v = params[c.key];
+        if (v === undefined) return;
+        if (typeof v === 'number' && c.step && c.step < 1) v = v.toFixed(2);
+        out.push('  ' + c.label + ': ' + v);
+      });
+      out.push('');
+    });
+    if (auto) {
+      out.push('WHAT AUTO-ADJUST READ FROM THE IMAGE');
+      out.push('  Grain: ' + auto._noise);
+      out.push('  Grain after contrast: ' + auto._effective);
+      out.push('  Subject tonal range: ' + auto._range);
+      out.push('  Background level: ' + auto._bg);
+      out.push('  Subject darker than background: ' + (auto.invert ? 'yes' : 'no'));
+      out.push('');
+    }
+    out.push('Generated ' + new Date().toISOString());
+    return out.join('\n');
+  }
+
   CD.UI = {
     SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED,
-    defaults: defaults, buildPanel: buildPanel, earliest: earliest
+    defaults: defaults, buildPanel: buildPanel, earliest: earliest,
+    describe: describe, eachControl: eachControl
   };
 })(CD);

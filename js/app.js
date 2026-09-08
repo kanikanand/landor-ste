@@ -423,7 +423,7 @@ var CD = window.CD || {};
   /* Mode and fill are look decisions; auto owns the image decisions. The two
    * sets are disjoint, so this never disturbs the calibration. */
   function applyMode() {
-    CD.Presets.applyMode(state.params, state.params.mode, state.params.gridFill);
+    CD.Presets.applyMode(state.params, state.params.mode);
     if (ui) ui.syncAll();
   }
 
@@ -578,6 +578,37 @@ var CD = window.CD || {};
       (quality === 'draft' ? ' (preview)' : '');
   }
 
+  /* One button, one folder: the artwork and a plain record of everything that
+   * made it, so a render can be picked back up in a week without guessing
+   * which settings produced it. Browsers cannot write a directory, so the
+   * folder is a zip with one prefix on both entries. */
+  function downloadBundle() {
+    if (!state.dots.length) { status('Nothing to export yet.', true); return; }
+    if (state.pendingFull || state.quality !== 'full') {
+      clearTimeout(fullTimer);
+      run('full');
+    }
+    var p = state.params;
+    var svg = CD.buildSVG({
+      width: state.viewW, height: state.viewH,
+      background: p.background, dots: state.dots, shapeType: p.shapeType,
+      ramp: state.ramp, colorGamma: p.colorGamma,
+      title: state.srcName + ' — contour dots'
+    });
+    var folder = 'contour-dots-' + slug(state.srcName);
+    var blob = CD.zip([
+      { name: folder + '/' + slug(state.srcName) + '.svg', text: svg },
+      { name: folder + '/settings.txt', text: CD.UI.describe(p, state.auto) }
+    ]);
+    CD.downloadBlob(folder + '.zip', blob);
+    status('Downloaded ' + folder + '.zip — SVG and settings.');
+  }
+
+  function slug(s) {
+    return String(s || 'render').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'render';
+  }
+
   function exportSVG() {
     if (!state.dots.length) { status('Nothing to export yet.', true); return; }
     if (state.pendingFull || state.quality !== 'full') {
@@ -645,6 +676,7 @@ var CD = window.CD || {};
     });
 
     $('#exportSvg').addEventListener('click', exportSVG);
+    $('#download').addEventListener('click', downloadBundle);
     $('#exportPng').addEventListener('click', exportPNG);
 
     $('#reseed').addEventListener('click', function () {
@@ -713,7 +745,7 @@ var CD = window.CD || {};
         /* Switching the model on is the one control that has to fetch
          * something before its stage can be rebuilt. */
         if (key === 'modelDepth' && state.params.modelDepth) ensureModelDepth();
-        if (key === 'mode' || key === 'gridFill') applyMode();
+        if (key === 'mode') applyMode();
         if (key === 'autoTune' && state.params.autoTune) runAuto();
         markDirty(stage);
       },

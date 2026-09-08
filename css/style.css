@@ -244,3 +244,31 @@ input[type=color] {
 .adv-body { margin-top: 6px; }
 
 .mode-row .shape-btn { flex: 1 1 auto; }
+
+/* Per-section detail. The controls that matter stay visible; the rest sits
+   with the section it belongs to rather than in one pile at the bottom. */
+.more-toggle {
+  width: 100%;
+  text-align: left;
+  margin-top: 6px;
+  padding: 7px 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.more-toggle::before { content: '+ '; }
+.more-toggle.open::before { content: '– '; }
+.more-toggle:hover { opacity: 1; background: rgba(255, 255, 255, 0.05); }
+
+.more-body {
+  margin-top: 8px;
+  padding-left: 10px;
+  border-left: 2px solid rgba(255, 255, 255, 0.10);
+}
+
+.download { margin-top: 10px; }

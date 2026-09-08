@@ -115,6 +115,19 @@ var CD = window.CD || {};
     setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
   }
 
+  /* The zip path already has a Blob; the text path wraps one. */
+  function downloadBlob(filename, blob) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
   CD.buildSVG = buildSVG;
   CD.download = download;
+  CD.downloadBlob = downloadBlob;
 })(CD);

@@ -33,6 +33,56 @@ clean depth map — a surface lit from the upper left — because that is what a
 real photograph looks like going in, and the pipeline has to recover depth
 from luminance either way.
 
+## The panel
+
+Four questions, in the order you actually answer them:
+
+| section | what it settles |
+|---|---|
+| **Image** | what the tool is seeing in your picture |
+| **Place** | where the dots go, and how much photograph stays |
+| **Pattern** | what the dots look like |
+| **Depth response** | what changes between near and far |
+| **Colour** | |
+
+Each section shows the four or five controls that matter and folds the rest
+behind a **More** button belonging to that section. Nineteen controls up
+front, thirty behind five buttons — and the detail sits with the thing it
+details, so wondering about scatter while you are in Pattern is one click, not
+a hunt through one long pile at the bottom.
+
+Everything is named for what you will see change. A control called "Flow
+coherence" is only honest if you already know there is a flow field; if you do
+not, it is a dice roll. So it is now "How far the form carries", "Clean up the
+outline", "Push dots out with the form", "Fade out at the edges".
+
+The order is load-bearing. **Image** comes first because every mode builds on
+it: the modes decide where dots go, the image settings decide what those dots
+are reading. Switching mode never touches the image settings and re-reading an
+image never touches the mode — the two sets share no parameter, and there is a
+test that says so.
+
+## Download
+
+One button, one folder: the SVG and a plain-text record of every setting that
+produced it, written in the same words the panel uses, plus what auto-adjust
+read off the picture. Browsers cannot write a directory, so the folder is a
+zip — stored, not compressed, because an SVG and a page of text are not worth
+a deflate implementation. The record is generated from the schema, so it
+cannot drift out of date as controls are renamed.
+
+## Grid, without a grid mode
+
+There is no grid mode. **Grid ↔ follows the form** at 0 runs the rows straight
+and the dots read as a lattice; at 1 they wrap around the subject. One slider,
+and every value between is usable.
+
+A separate lattice fill existed and has been taken out of the panel: it was a
+fourth thing to learn that produced a stiffer result than turning this slider
+down, because it threw away any knowledge of where the subject was. It is
+still there under Pattern → More for the cases where a truly flat lattice is
+wanted.
+
 ## Modes, and why there are only three
 
 The obvious reading of "interaction with imagery", "background to imagery",
@@ -43,15 +93,14 @@ they are one axis and three switches:
 | decision | options | what it settles |
 |---|---|---|
 | **Mode** | Surface · Fingerprint · Interaction | where the dots live relative to the subject |
-| **Fill** | Fluid · Grid | how they are laid out once they are there |
 | **Photograph** | on · off | whether the picture is present at all |
 | **Reveal** | on · off + position | the hand-over between picture and dots |
 
-Three by two by two by two is twenty-four looks out of four decisions, and
-every combination means something: a fingerprint can be gridded or fluid, a
-surface treatment can reveal or not, any of them can drop the photograph.
-Enumerated as presets that would have been twenty-four buttons, each going
-stale the moment a new fill or a new region source is added.
+Three modes by two photograph states by two reveal states is twelve looks out
+of three decisions, and every combination means something: a surface treatment
+can reveal or not, any of them can drop the photograph. Enumerated as presets
+that would have been twelve buttons, each going stale the moment a new region
+source is added.
 
 **Surface** puts dots on the subject — the form drawn out of the picture, with
 Reveal handing it over. **Fingerprint** puts them outside it: the subject stays
@@ -115,14 +164,6 @@ The two sets are disjoint by construction — `Auto.OWNED` and `Presets.OWNED`
 share no key, and there is a test that says so. That is what lets a mode and a
 plate change independently: switching mode never disturbs the calibration, and
 loading an image never disturbs the mode.
-
-## The panel
-
-Eleven controls above the fold, forty-six behind **Advanced**. The eleven are
-the four decisions plus dot size, spacing and the two colours; everything else
-is still there, still live, and editing the same parameters the presets write.
-Auto's readings are written into those same controls rather than held
-somewhere private, so what it decided is visible and can be overridden.
 
 ## The idea
 
@@ -628,6 +669,7 @@ js/svgexport.js       vector export
 js/depthmodel.js      Depth Anything V2 in the browser (transformers.js)
 js/presets.js         the three modes; look parameters only
 js/auto.js            reads the plate; image parameters only
+js/zip.js             tiny stored-entry zip writer, for Download
 js/ui.js              declarative control schema + panel
 js/app.js             p5 sketch, pipeline orchestration, I/O
 vendor/p5.min.js      p5.js 1.9.4
