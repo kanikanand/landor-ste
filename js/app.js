@@ -224,6 +224,22 @@ var CD = window.CD || {};
   function stageDepth(p) {
     var fw = state.fieldW, fh = state.fieldH;
 
+    /* Concepts have nothing to read: the field IS the image. It is built
+     * rather than measured, and then handed to exactly the same pipeline a
+     * photograph would go through, so contours, spacing, size and colour all
+     * behave identically. */
+    if (p.fieldSource === 'generative') {
+      var gm = new CD.Field(fw, fh, 1);
+      gm.data.fill(1);
+      var gf = CD.Generative.build(fw, fh, p);
+      state.dep = CD.withDepth({ mask: gm, w: fw, h: fh }, gf, p);
+      state.tone = gf;
+      state.hasAlpha = false;
+      state.maskFrom = 'generated';
+      state.matte = null;
+      return;
+    }
+
     /* An estimated depth map replaces step 1 of the depth pipeline and nothing
      * else: it lands on the same analysis grid and every control below still
      * means what it meant. While an estimate is still loading this falls
@@ -320,10 +336,27 @@ var CD = window.CD || {};
    * of the subject rather than as a halftone of whatever is behind it. The
    * silhouette is unchanged; only the surface the contours follow is. */
   function applyFieldSource(p) {
-    if (p.fieldSource !== 'distance' || !state.dep) return;
-    var d = CD.distanceDepth(state.dep.mask, state.dep.w, state.dep.h,
-                             Math.max(4, (p.edgeBand || 12) * 1.6));
-    state.dep = CD.withDepth(state.dep, d, p);
+    if (!state.dep) return;
+
+    /* Trace: height is distance from the outline, so contours are offsets of
+     * the silhouette. */
+    if (p.fieldSource === 'distance') {
+      var d = CD.distanceDepth(state.dep.mask, state.dep.w, state.dep.h,
+                               Math.max(4, (p.edgeBand || 12) * 1.6));
+      state.dep = CD.withDepth(state.dep, d, p);
+      return;
+    }
+
+    /* Gather: height is proximity to the focal point, so density concentrates
+     * there and thins away from it. Built by the same generator as Concepts,
+     * with the star influence off — this is about one point, not a geometry. */
+    if (p.fieldSource === 'focus') {
+      var f = CD.Generative.build(state.dep.w, state.dep.h, {
+        focusX: p.focusX, focusY: p.focusY, focusReach: p.focusReach,
+        fieldAngle: p.fieldAngle, converge: 1, starInfluence: 0
+      });
+      state.dep = CD.withDepth(state.dep, f, p);
+    }
   }
 
   /* Field 3. The silhouette the depth threshold carved, narrowed to the area
@@ -569,15 +602,27 @@ var CD = window.CD || {};
    * is, and only the untouched settings take the new mode's suggestion.
    *
    * The three that define the mode are the exception — they are the mode. */
-  var DEFINES_MODE = { regionSource: 1, fieldSource: 1, edgeBand: 1 };
+  /* A preset names all four layers; changing a layer on its own recomposes
+   * from the layers as they now stand. Either way what the user has moved is
+   * left alone, because a preset is a starting point and not a reset. */
+  function applyPreset() {
+    CD.Art.applyPreset(state.params, state.params.preset, state.touched);
+    afterDirection();
+  }
 
-  function applyMode() {
-    var mode = CD.Presets.MODES[state.params.mode] || CD.Presets.MODES.full;
-    Object.keys(mode.params).forEach(function (k) {
-      if (CD.Presets.OWNED.indexOf(k) === -1) return;
-      if (DEFINES_MODE[k] || !state.touched[k]) state.params[k] = mode.params[k];
-    });
-    if (ui) { ui.syncAll(); ui.modeChanged(state.params.mode); }
+  function applyLayers() {
+    CD.Art.compose(state.params, {
+      behaviour: state.params.behaviour,
+      placement: state.params.placement,
+      intensity: state.params.intensity,
+      lead: state.params.lead
+    }, state.touched);
+    afterDirection();
+  }
+
+  function afterDirection() {
+    CD.Art.applyPalette(state.params, state.params.palette);
+    if (ui) { ui.syncAll(); ui.modeChanged(state.params.placement); }
   }
 
   /* ==========================================================================
@@ -924,14 +969,17 @@ var CD = window.CD || {};
           ui.set('cutoutModel', true);
           ensureCutout();
         }
-        if (key === 'mode') applyMode();
+        if (key === 'preset') applyPreset();
+        if (key === 'behaviour' || key === 'placement' ||
+            key === 'intensity' || key === 'lead') applyLayers();
+        if (key === 'palette') CD.Art.applyPalette(state.params, state.params.palette);
         if (key === 'autoTune' && state.params.autoTune) runAuto();
         markDirty(stage);
       },
       { pickShape: function () { document.getElementById('shapeInput').click(); } });
 
     wireChrome();
-    applyMode();
+    applyPreset();
     setSource(makeSampleImage(), 'sample');
     status('Drop an image anywhere, or load one. Drop an SVG to set the dot shape.');
   };

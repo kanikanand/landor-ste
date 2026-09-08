@@ -94,6 +94,98 @@ down, because it threw away any knowledge of where the subject was. It is
 still there under Pattern → More for the cases where a truly flat lattice is
 wanted.
 
+## Four layers, not one list
+
+The earlier modes mixed three decisions into one list: *full* described
+placement, *edge* described a behaviour, *background* described placement
+again. That does not scale — the moment a new behaviour or placement appears,
+every combination has to be re-enumerated.
+
+Four independent layers instead:
+
+| layer | question | options |
+|---|---|---|
+| **Content** | what is being communicated | Concepts · Products · People |
+| **Behaviour** | what the field does | Form · Trace · Gather |
+| **Placement** | where it lives | Behind · Within · Around · whole frame |
+| **Intensity** | how expressive it is | Quiet · Supporting · Hero |
+
+One rule holds it together, and every default is that sentence turned into
+numbers: **Concepts — the dots create. Products — the dots reveal. People —
+the dots support.**
+
+Behaviour decides which *surface* the dots read, which is the honest
+difference between the three: **Form** follows the subject's own shape,
+**Trace** follows the line where it ends, **Gather** follows distance from a
+focal point. Placement then decides which side of the outline they sit.
+
+## Six approved presets
+
+Presets rather than guidelines, because a guideline gets interpreted and a
+preset gets used. Each names all four layers; the numbers come from the
+layers, so changing a behaviour reaches every preset that uses it.
+
+| preset | region | field read | measured coverage |
+|---|---|---|---|
+| Concept · Hero | whole frame | generated | 62% |
+| Concept · Quiet | whole frame | generated | 44% |
+| People · Environmental | behind | focal | 53% |
+| People · Integrated | within | the picture | 19% |
+| Product · Showcase | behind | focal | 32% |
+| Product · Detail | around | distance | 2.3% |
+
+## Intensity, and one parameter leading
+
+Intensity is deliberately **one** control moving density, scale and coverage
+together. Exposing all three invites all three to be pushed at once, which is
+how a system stops looking engineered.
+
+**Led by** is the other half of that restraint: whichever dimension is doing
+the talking gets its full range, and the other two are damped towards the
+middle so they cannot compete with it. Dot scale is clamped to a narrow band —
+one circular primitive with a limited size range is the first line of the
+visual DNA, and a slider that can reach a blob has already broken it.
+
+## Concepts: the field forms the subject
+
+For Concepts the dots are not describing something else; they *are* the image.
+That is a primary expression, not what happens when a photograph is missing,
+so it has its own construction rather than the photo pipeline run on an empty
+frame — a height field built from a focal point, a direction and a star
+geometry, handed to exactly the same contour pipeline a photograph uses.
+
+**Expand ↔ converge** is one axis through three readings, because they are
+three points on one line rather than three settings: expansion at 0, alignment
+in the middle, convergence at 1. Verified — the centre of the field reads 0.14
+under expansion, 0.76 under alignment, 1.00 under convergence.
+
+**On the star.** The organising geometry is a *parametric N-pointed star*,
+because the real mark's construction is not in this repository. It is a
+stand-in with the right behaviour — an N-fold symmetry the field resolves
+towards — and **it should be replaced by the actual logo geometry before this
+is used for anything real**. It is an organising influence and a resolution
+point, never a shape scattered through the pattern.
+
+## Protecting what carries the meaning
+
+Two reasons to hold an area clear, kept apart because they are not the same
+thing. **Protect subject** is about the subject: eyes, mouth and hands on a
+person; a material finish, an interface or a label on a product. Those carry
+the meaning, and a field laid over them reads as damage. It is placed
+automatically at the horizontal centre of mass of the top fifth of the
+silhouette — a heuristic, not a face detector, but a face is reliably at the
+top of a person and near their centre of mass there, and being roughly right
+automatically beats being exactly right only when someone remembers.
+
+**Copy space** is about the page: somewhere for the headline that was designed
+in rather than found by cropping afterwards.
+
+## Palette
+
+Approved red and neutral pairs, checked for contrast, in place of two free
+colour wells. A colour picker is that decision handed back to whoever is in a
+hurry.
+
 ## A mode is not a reset
 
 Switching mode used to write the whole preset over your settings, so tuning
@@ -825,6 +917,8 @@ js/svgexport.js       vector export
 js/depthmodel.js      Depth Anything V2 in the browser (transformers.js)
 js/presets.js         the three modes; look parameters only
 js/auto.js            reads the plate; image parameters only
+js/artdirection.js    the four layers, the six presets, intensity, palette
+js/generative.js      the field for Concepts, where there is no photograph
 js/matte.js           telling subject from background: plate, depth, alpha
 js/zip.js             tiny stored-entry zip writer, for Download
 js/ui.js              declarative control schema + panel

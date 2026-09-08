@@ -415,9 +415,77 @@ var CD = window.CD || {};
     return f;
   }
 
+  /* Where the subject's head most likely is: the horizontal centre of mass of
+   * the top fifth of the silhouette. A heuristic, not a face detector — but a
+   * face is reliably at the top of a person and reliably near their centre of
+   * mass there, and being roughly right automatically beats being exactly
+   * right only when someone remembers to place it. It is a control as well,
+   * so a wrong guess is one drag from fixed. */
+  function subjectHead(mask, w, h) {
+    var m = mask.data, x, y;
+    var top = -1, sumX = 0, count = 0;
+    for (y = 0; y < h && top < 0; y++) {
+      for (x = 0; x < w; x++) if (m[y * w + x] > 0.5) { top = y; break; }
+    }
+    if (top < 0) return null;
+    var band = Math.max(1, Math.round(h * 0.2));
+    for (y = top; y < Math.min(h, top + band); y++) {
+      for (x = 0; x < w; x++) if (m[y * w + x] > 0.5) { sumX += x; count++; }
+    }
+    if (!count) return null;
+    return { x: (sumX / count) / w, y: (top + band * 0.45) / h,
+             r: Math.max(0.06, band / h * 0.95) };
+  }
+
+  /* Keep the dots off what the picture is actually about.
+   *
+   * Two different reasons to hold an area clear, and they are worth keeping
+   * apart. PROTECT is about the subject: eyes, mouth and hands on a person,
+   * a material finish or an interface or a label on a product. Those carry
+   * the meaning, and a field laid over them reads as damage. COPY SPACE is
+   * about the page: somewhere for the headline to live that was designed in
+   * rather than found afterwards.
+   */
+  function carveOut(region, w, h, p, mask) {
+    var r = region.data, x, y;
+
+    if (p.protect > 0) {
+      var head = (p.protectAuto === false) ? null : subjectHead(mask, w, h);
+      var px = p.protectX !== undefined && !head ? p.protectX : (head ? head.x : 0.5);
+      var py = p.protectY !== undefined && !head ? p.protectY : (head ? head.y : 0.3);
+      var rad = (head ? head.r : 0.16) * (p.protectSize === undefined ? 1 : p.protectSize);
+      var ar = w / h;
+      for (y = 0; y < h; y++) {
+        var v = (y + 0.5) / h;
+        for (x = 0; x < w; x++) {
+          var u = (x + 0.5) / w;
+          var dx = (u - px) * ar, dy = v - py;
+          var d = Math.hypot(dx, dy) / Math.max(1e-4, rad);
+          /* soft-edged, because a hard hole reads as a mistake */
+          r[y * w + x] *= 1 - p.protect * (1 - smoothstep(0.7, 1.25, d));
+        }
+      }
+    }
+
+    if (p.copySpace > 0) {
+      var g = wipeGeometry({ wipeAngle: p.copyAngle || 0, wipePosition: 0,
+                             wipeFeather: 0 });
+      for (y = 0; y < h; y++) {
+        var v2 = (y + 0.5) / h;
+        for (x = 0; x < w; x++) {
+          var u2 = (x + 0.5) / w;
+          var t = (((u2 - 0.5) * g.ux + (v2 - 0.5) * g.uy) - g.lo) / g.span;
+          /* clear from the near end of the axis to `copySpace` of the way in */
+          r[y * w + x] *= smoothstep(p.copySpace, p.copySpace + 0.12, t);
+        }
+      }
+    }
+    return region;
+  }
+
   function buildRegion(mask, w, h, p) {
     var region = regionSource(mask, w, h, p);
-    if (!p.wipe) return region;
+    if (!p.wipe) return carveOut(region, w, h, p, mask);
 
     var r = region.data;
     var g = wipeGeometry(p);
@@ -432,7 +500,7 @@ var CD = window.CD || {};
       }
     }
 
-    return region;
+    return carveOut(region, w, h, p, mask);
   }
 
   /* Swap in a different depth field and rebuild everything derived from it.
@@ -562,6 +630,7 @@ var CD = window.CD || {};
   CD.toneField = toneField;
   CD.buildDepth = buildDepth;
   CD.buildRegion = buildRegion;
+  CD.subjectHead = subjectHead;
   CD.regionSource = regionSource;
   CD.distanceDepth = distanceDepth;
   CD.wipeGeometry = wipeGeometry;
