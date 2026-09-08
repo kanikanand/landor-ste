@@ -29,6 +29,39 @@ var CD = window.CD || {};
    * does — a control called "Flow coherence" is only honest if you already
    * know there is a flow field, and if you do not, it is a dice roll.
    * ------------------------------------------------------------------------*/
+  /* --------------------------------------------------------------------------
+   * When a control is worth showing
+   *
+   * A control that cannot do anything is worse than a missing one: it invites
+   * a change that has no effect, and quietly teaches that the panel is not to
+   * be trusted. Three ways to say when a row applies, in order of how blunt
+   * they are — `modes` for placement, `forms` for formation, and `when` for
+   * the handful that depend on something else again. A row with none of them
+   * always shows.
+   * ------------------------------------------------------------------------*/
+  var RADIATES = { concentric: 1, radial: 1, spiral: 1 };
+
+  function isGenerative(p) { return p.fieldSource === 'generative'; }
+  function isAbstract(p) { return p.fieldSource === 'abstract'; }
+  function invented(p) { return isGenerative(p) || isAbstract(p); }
+
+  /* A focal point is read by the built fields, by the gather behaviour, and by
+   * every formation built about a centre. Three different reasons, one point. */
+  function usesFocus(p) {
+    return invented(p) || p.fieldSource === 'focus' || !!RADIATES[p.formation];
+  }
+
+  function usesStarPoints(p) {
+    return isGenerative(p) || !!RADIATES[p.formation];
+  }
+
+  function visible(c, p) {
+    if (c.when && !c.when(p)) return false;
+    if (c.modes && c.modes.indexOf(p.placement) === -1) return false;
+    if (c.forms && c.forms.indexOf(p.formation) === -1) return false;
+    return true;
+  }
+
   var SCHEMA = [
     {
       group: 'Image',
@@ -122,22 +155,26 @@ var CD = window.CD || {};
 
     {
       group: 'Direction',
-      hint: 'Four decisions. The presets are the approved combinations.',
+      hint: 'The approved combinations.',
       controls: [
         { key: 'preset', label: 'Preset', type: 'preset', def: 'conceptHero',
           stage: 'depth' },
-        { key: 'behaviour', label: 'Behaviour', type: 'behaviour', def: 'form',
-          stage: 'depth',
-          help: 'What the field does. Form follows the shape of the thing, Trace ' +
-                'follows the line where it ends, Gather concentrates towards one point.' },
-        { key: 'placement', label: 'Placement', type: 'placement', def: 'none',
-          stage: 'depth', help: 'Where the field lives relative to the subject.' },
         { key: 'intensity', label: 'Intensity', type: 'intensity', def: 'hero',
           stage: 'depth',
           help: 'One control for how expressive the field is. It moves density, ' +
                 'scale and coverage together so they cannot all be pushed at once.' },
       ],
+      /* Behaviour and placement are two of the five layers and they belong in
+       * the panel, but a preset settles both of them and they are changed far
+       * less often than the intensity beside them. Up top they cost two rows
+       * on every screen; here they cost none until they are wanted. */
       more: [
+        { key: 'behaviour', label: 'Behaviour', type: 'behaviour', def: 'form',
+          stage: 'depth',
+          help: 'What the field reads. Form follows the shape of the thing, Trace ' +
+                'follows the line where it ends, Gather concentrates towards one point.' },
+        { key: 'placement', label: 'Placement', type: 'placement', def: 'none',
+          stage: 'depth', help: 'Where the field lives relative to the subject.' },
         { key: 'showPhoto', label: 'Photo', type: 'toggle', def: true, stage: 'draw' },
         { key: 'lead', label: 'Led by', type: 'lead', def: 'density', stage: 'depth',
           help: 'Which dimension does the talking. The other two are pulled back ' +
@@ -173,27 +210,40 @@ var CD = window.CD || {};
 
     {
       group: 'Field',
-      hint: 'The shape the dots resolve into when there is no photograph.',
+      hint: 'What the dots read.',
       controls: [
-        { key: 'converge', modes: ['none'], label: 'Expand \u2194 converge', min: 0, max: 1,
+        { key: 'abstractField', when: isAbstract, label: 'Formation',
+          type: 'abstract', def: 'emergence', stage: 'depth',
+          help: 'Twelve named formations, each a keyword given a shape. The ' +
+                'density is what carries it \u2014 no shape is ever drawn.' },
+        { key: 'converge', when: isGenerative, label: 'Expand \u2194 converge', min: 0, max: 1,
           step: 0.01, def: 0.7, stage: 'depth',
           help: 'One axis through three readings: expansion at 0, alignment in ' +
                 'the middle, convergence at 1.' },
-        { key: 'focusX', modes: ['none'], label: 'Focus across', min: 0, max: 1, step: 0.01, def: 0.5,
-          stage: 'depth' },
-        { key: 'focusY', modes: ['none'], label: 'Focus down', min: 0, max: 1, step: 0.01, def: 0.45,
-          stage: 'depth' }
       ],
       more: [
-        { key: 'focusReach', modes: ['none'], label: 'Focus reach', min: 0.1, max: 1.2, step: 0.01,
-          def: 0.42, stage: 'depth' },
-        { key: 'fieldAngle', modes: ['none'], label: 'Direction', min: 0, max: 360, step: 1, def: 0,
+        { key: 'focusX', when: usesFocus, label: 'Centre across', min: 0, max: 1, step: 0.01, def: 0.5,
           stage: 'depth' },
-        { key: 'starPoints', modes: ['none'], label: 'Star points', min: 3, max: 12, step: 1, def: 5,
+        { key: 'focusY', when: usesFocus, label: 'Centre down', min: 0, max: 1, step: 0.01, def: 0.45,
+          stage: 'depth' },
+        { key: 'fieldScale', when: isAbstract, label: 'Field size', min: 0.4, max: 2,
+          step: 0.02, def: 1, stage: 'depth',
+          help: 'How much of the frame the formation fills. Below 1 it sits ' +
+                'inside the frame with air around it; above 1 it runs off the edge.' },
+        { key: 'lobes', when: isAbstract, label: 'Lobes', min: 3, max: 8, step: 1, def: 4,
+          stage: 'depth',
+          help: 'How many concentrations the formations built from several are ' +
+                'made of \u2014 the points of the soft star, the satellites that ' +
+                'gather, the volumes that balance.' },
+        { key: 'focusReach', when: usesFocus, label: 'Reach', min: 0.1, max: 1.2, step: 0.01,
+          def: 0.42, stage: 'depth' },
+        { key: 'fieldAngle', when: invented, label: 'Direction', min: 0, max: 360, step: 1, def: 0,
+          stage: 'depth' },
+        { key: 'starPoints', when: usesStarPoints, label: 'Star points', min: 3, max: 12, step: 1, def: 5,
           stage: 'depth',
           help: 'A stand-in for the real mark\u2019s construction. Replace it with ' +
                 'the logo geometry before using this for anything real.' },
-        { key: 'starInfluence', modes: ['none'], label: 'Star influence', min: 0, max: 1, step: 0.01,
+        { key: 'starInfluence', when: isGenerative, label: 'Star influence', min: 0, max: 1, step: 0.01,
           def: 0.45, stage: 'depth',
           help: 'How strongly the geometry organises the field. It is a resolution ' +
                 'point, never a shape scattered through the pattern.' }
@@ -202,18 +252,28 @@ var CD = window.CD || {};
 
     {
       group: 'Pattern',
-      hint: 'How the dots are drawn.',
+      hint: 'Where the dots sit. The picture comes through it.',
       controls: [
-        { key: 'flowStrength', label: 'Grid ↔ form', min: 0, max: 1,
-          step: 0.01, def: 0.9, stage: 'flow',
-          help: 'At 0 the rows run straight and the dots read as a grid. At 1 ' +
-                'they wrap around the form. Everything in between is a mix.' },
+        { key: 'formation', label: 'Formation', type: 'formation', def: 'contour',
+          stage: 'lines',
+          help: 'Contour lets the picture decide the layout. The other five ' +
+                'decide it in advance, and the picture comes through them as ' +
+                'dots that grow and crowd where it is near.' },
+        { key: 'starness', forms: ['concentric', 'radial', 'spiral'],
+          label: 'Circle \u2194 star', min: 0, max: 1, step: 0.01, def: 0,
+          stage: 'lines',
+          help: 'At 0 the rings are circles, exactly. Turning it up pulls the ' +
+                'radius into lobes until they are the points of a star.' },
         { key: 'connect', label: 'Join into nodes', min: 0, max: 1, step: 0.01, def: 0,
           stage: 'draw',
           help: 'Draws each row as a line through its own dots, so the field ' +
                 'reads as a network instead of loose points. 0 is dots only.' },
       ],
       more: [
+        { key: 'flowStrength', forms: ['contour'], label: 'Follow the form', min: 0, max: 1,
+          step: 0.01, def: 0.9, stage: 'flow',
+          help: 'At 0 the traced rows run straight. At 1 they wrap around the ' +
+                'form. Only the contour formation has anything to bend.' },
         { key: 'dotSize', label: 'Size', min: 0.3, max: 14, step: 0.1, def: 2.0,
           stage: 'dots' },
         { key: 'dotSpacing', label: 'Spacing', min: 1.5, max: 40, step: 0.25,
@@ -236,11 +296,11 @@ var CD = window.CD || {};
         { key: 'randomness', label: 'Scatter', min: 0, max: 1, step: 0.01, def: 0.06,
           stage: 'dots',
           help: 'Loosens the spacing so the pattern stops looking mechanical.' },
-        { key: 'depthExaggeration', modes: ['within'], label: 'Relief', min: 0, max: 30,
+        { key: 'depthExaggeration', modes: ['within'], forms: ['contour'], label: 'Relief', min: 0, max: 30,
           step: 0.1, def: 2, stage: 'dots',
           help: 'Shifts dots outwards where the surface bulges towards you, so ' +
                 'the rows read as relief rather than as a flat map.' },
-        { key: 'reliefCoherence', modes: ['within'], label: 'Relief smoothing', min: 0, max: 24,
+        { key: 'reliefCoherence', modes: ['within'], forms: ['contour'], label: 'Relief smoothing', min: 0, max: 24,
           step: 1, def: 10, stage: 'depth',
           help: 'Neighbouring dots move together. Low values let them move ' +
                 'differently and tear the rows apart.' },
@@ -261,12 +321,12 @@ var CD = window.CD || {};
         { key: 'palette', label: 'Palette', type: 'palette', def: 0, stage: 'draw',
           help: 'Approved pairs, checked for contrast. A colour well is that ' +
                 'decision handed back to whoever is in a hurry.' },
+      ],
+      more: [
         { key: 'densityDepth', label: 'Density varies', min: 0, max: 1, step: 0.01,
           def: 1, stage: 'lines',
           help: '0 covers the whole area evenly, lights and darks alike. Use it ' +
-                'when you have chosen an area and want all of it.' }
-      ],
-      more: [
+                'when you have chosen an area and want all of it.' },
         { key: 'fadeDepth', label: 'Fade', min: 0, max: 1, step: 0.01, def: 0,
           stage: 'dots',
           help: 'Far dots go transparent. Easily overdone.' },
@@ -304,6 +364,7 @@ var CD = window.CD || {};
      * a reset has to land somewhere valid before a preset is applied. */
     regionSource: 'all',
     fieldSource: 'image',
+    colorStops: null,
     edgeBand: 12
   };
 
@@ -359,7 +420,7 @@ var CD = window.CD || {};
      * depth is distance to that outline — so every tonal control is noise in
      * them; and every separation control is noise in Full, which covers the
      * whole frame and so has no outside to find. */
-    var rowModes = [];
+    var rowScopes = [];
     var needRows = [];
     var sections = [];
 
@@ -389,7 +450,7 @@ var CD = window.CD || {};
 
       var render = function (c, into) {
         var row = el('div', 'ctrl');
-        if (c.modes) rowModes.push({ row: row, modes: c.modes });
+        if (c.modes || c.forms || c.when) rowScopes.push({ row: row, c: c });
         if (c.needs) needRows.push({ row: row, needs: c.needs, control: c });
 
         if (c.type === 'toggle') {
@@ -420,24 +481,74 @@ var CD = window.CD || {};
           row.appendChild(top);
           addRef(refs, c.key, { set: function (v) { ci.value = v; } });
 
-        } else if (c.type === 'preset' || c.type === 'behaviour' ||
-                   c.type === 'placement' || c.type === 'intensity' ||
-                   c.type === 'lead' || c.type === 'palette') {
+        } else if (c.type === 'palette') {
+          /* Swatch chips rather than named buttons. Eight labelled buttons
+           * wrap onto four rows and say less than eight chips on one: a
+           * palette is a thing you recognise, and a gradient through three
+           * stops cannot be described by its name anyway. The chip carries the
+           * ramp; its border carries the background the ramp sits on, because
+           * both halves of that decision matter and only showing one of them
+           * is how a pale palette gets picked for a pale ground. */
+          row.appendChild(el('label', null, c.label));
+          var pwrap = el('div', 'pal-row');
+          CD.Art.PALETTES.forEach(function (pal, idx) {
+            var pb = el('button', 'pal-btn');
+            pb.dataset.pick = String(idx);
+            pb.title = pal.label;
+            pb.setAttribute('aria-label', pal.label);
+            pb.style.backgroundImage = CD.Art.paletteCss(idx);
+            pb.style.borderColor = pal.bg;
+            pb.addEventListener('click', function () {
+              params[c.key] = idx;
+              setRef(refs, c.key, idx);
+              onChange(c.stage, c.key);
+            });
+            if (Number(params[c.key]) === idx) pb.classList.add('on');
+            pwrap.appendChild(pb);
+          });
+          row.appendChild(pwrap);
+          addRef(refs, c.key, { set: function (v) {
+            pwrap.querySelectorAll('.pal-btn').forEach(function (o) {
+              o.classList.toggle('on', o.dataset.pick === String(v));
+            });
+          } });
+
+        } else if (c.type === 'preset' || c.type === 'abstract' ||
+                   c.type === 'behaviour' || c.type === 'placement' ||
+                   c.type === 'formation' || c.type === 'intensity' ||
+                   c.type === 'lead') {
           /* One renderer for every button group. They differ only in what
            * fills them, so four near-identical blocks were four places for the
            * same bug to hide. */
           var A = CD.Art;
           /* Six named layouts is a list, not a row of buttons: buttons wrap,
            * and a wrapping row of six is taller than the section it sits in. */
-          if (c.type === 'preset') {
+          if (c.type === 'preset' || c.type === 'abstract') {
             row.appendChild(el('label', null, c.label));
             var sel = el('select', 'preset-select');
-            A.PRESET_ORDER.forEach(function (k) {
-              var op = el('option', null, A.PRESETS[k].label);
-              op.value = k;
-              op.title = A.PRESETS[k].note;
-              sel.appendChild(op);
-            });
+            if (c.type === 'abstract') {
+              CD.Abstract.ORDER.forEach(function (k) {
+                var m = CD.Abstract.META[k];
+                var op = el('option', null, m.keyword + ' \u2014 ' + m.name);
+                op.value = k;
+                op.title = m.note;
+                sel.appendChild(op);
+              });
+            } else {
+              /* Twenty layouts in one flat run hides which question each is an
+               * answer to, so the families are kept apart in the list. */
+              A.PRESET_GROUPS.forEach(function (grp) {
+                var og = el('optgroup');
+                og.label = grp.label;
+                grp.keys.forEach(function (k) {
+                  var op = el('option', null, A.PRESETS[k].label);
+                  op.value = k;
+                  op.title = A.PRESETS[k].note;
+                  og.appendChild(op);
+                });
+                sel.appendChild(og);
+              });
+            }
             sel.value = params[c.key];
             sel.addEventListener('change', function () {
               params[c.key] = sel.value;
@@ -450,28 +561,23 @@ var CD = window.CD || {};
             return;
           }
           var opts =
-            c.type === 'preset' ? A.PRESET_ORDER.map(function (k) {
-                return [A.PRESETS[k].label, k, A.PRESETS[k].note]; }) :
             c.type === 'behaviour' ? Object.keys(A.BEHAVIOUR).map(function (k) {
                 return [A.BEHAVIOUR[k].label, k, A.BEHAVIOUR[k].hint]; }) :
+            c.type === 'formation' ? A.FORMATION_ORDER.map(function (k) {
+                return [A.FORMATION[k].label, k, A.FORMATION[k].hint]; }) :
             c.type === 'placement' ? Object.keys(A.PLACEMENT).map(function (k) {
                 return [A.PLACEMENT[k].label, k, '']; }) :
             c.type === 'intensity' ? Object.keys(A.INTENSITY).map(function (k) {
                 return [A.INTENSITY[k].label, k, '']; }) :
-            c.type === 'palette' ? A.PALETTES.map(function (pal, idx) {
-                return [pal.label, idx, '']; }) :
             [['Density', 'density', ''], ['Scale', 'scale', ''],
              ['Coverage', 'coverage', '']];
 
           row.appendChild(el('label', null, c.label));
-          var gwrap = el('div', 'shape-row' + (c.type === 'preset' ? ' preset-row' : ''));
+          var gwrap = el('div', 'shape-row');
           opts.forEach(function (o) {
             var gb = el('button', 'shape-btn', o[0]);
             gb.dataset.pick = String(o[1]);
             if (o[2]) gb.title = o[2];
-            if (c.type === 'palette') {
-              gb.style.borderLeft = '6px solid ' + A.PALETTES[o[1]].dot;
-            }
             gb.addEventListener('click', function () {
               params[c.key] = o[1];
               setRef(refs, c.key, o[1]);
@@ -600,9 +706,9 @@ var CD = window.CD || {};
 
     /* Show only what the current mode can act on, and hide a section entirely
      * when nothing in it survives. */
-    function applyModeVisibility(mode) {
-      rowModes.forEach(function (r) {
-        r.row.hidden = r.modes.indexOf(mode) === -1;
+    function applyModeVisibility(p) {
+      rowScopes.forEach(function (r) {
+        r.row.hidden = !visible(r.c, p);
       });
       sections.forEach(function (x) {
         /* a More button with nothing behind it is a promise the panel cannot
@@ -620,7 +726,7 @@ var CD = window.CD || {};
         x.sec.hidden = !any;
       });
     }
-    applyModeVisibility(params.placement);
+    applyModeVisibility(params);
 
     /* Three controls depend on something outside the panel: one on the image
      * carrying its own outline, two on being able to fetch a model. When that
@@ -682,6 +788,13 @@ var CD = window.CD || {};
                '   — ' + (A.CONTENT[params.content] || {}).rule);
       out.push('Behaviour: ' + (A.BEHAVIOUR[params.behaviour] || {}).label +
                '   — ' + (A.BEHAVIOUR[params.behaviour] || {}).hint);
+      out.push('Formation: ' + (A.FORMATION[params.formation] || {}).label +
+               '   \u2014 ' + (A.FORMATION[params.formation] || {}).hint);
+      if (params.fieldSource === 'abstract' && CD.Abstract) {
+        var am = CD.Abstract.META[params.abstractField] || {};
+        out.push('Field:     ' + am.keyword + ' \u2014 ' + am.name);
+        out.push('  ' + am.note);
+      }
       out.push('Placement: ' + (A.PLACEMENT[params.placement] || {}).label);
       out.push('Intensity: ' + (A.INTENSITY[params.intensity] || {}).label +
                ', led by ' + params.lead);
@@ -692,12 +805,25 @@ var CD = window.CD || {};
       out.push(g.group.toUpperCase());
       eachControl(g, function (c) {
         if (c.type === 'mode') return;
-        /* a control the mode cannot act on is not part of what made this
-         * render, so it is not part of the record either */
-        if (c.modes && c.modes.indexOf(params.mode) === -1) return;
+        /* a control the current settings cannot act on is not part of what
+         * made this render, so it is not part of the record either */
+        if (!visible(c, params)) return;
         var v = params[c.key];
         if (v === undefined) return;
-        if (typeof v === 'number' && c.step && c.step < 1) v = v.toFixed(2);
+        /* A palette written as "4" is a number nobody can act on a week later,
+         * and the record exists precisely so that a render can be picked back
+         * up. Anything chosen from a named list is written by its name. */
+        if (c.type === 'palette') {
+          var pal = CD.Art.PALETTES[v] || {};
+          v = pal.label + '  (' + (pal.stops || []).join(' > ') + ' on ' + pal.bg + ')';
+        } else if (c.type === 'formation') {
+          v = ((CD.Art.FORMATION[v] || {}).label || v);
+        } else if (c.type === 'abstract' && CD.Abstract) {
+          var am = CD.Abstract.META[v] || {};
+          v = am.keyword + ' \u2014 ' + am.name;
+        } else if (typeof v === 'number' && c.step && c.step < 1) {
+          v = v.toFixed(2);
+        }
         out.push('  ' + c.label + ': ' + v);
       });
       if (out.length === before + 1) out.length = before;   // nothing applied
@@ -719,6 +845,7 @@ var CD = window.CD || {};
   CD.UI = {
     SCHEMA: SCHEMA, STAGES: STAGES, FIXED: FIXED,
     defaults: defaults, buildPanel: buildPanel, earliest: earliest,
+    visible: visible, RADIATES: RADIATES,
     describe: describe, eachControl: eachControl
   };
 })(CD);

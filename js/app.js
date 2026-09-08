@@ -262,10 +262,15 @@ var CD = window.CD || {};
       var md = state.modelDepth;
       state.dep = CD.buildDepthFromValues(
         CD.resampleGray(md.data, md.w, md.h, fw, fh), fw, fh, p, alpha);
-      return;
+    } else {
+      state.dep = CD.buildDepth(px, fw, fh, p, alpha);
     }
 
-    state.dep = CD.buildDepth(px, fw, fh, p, alpha);
+    /* This used to sit only on the luminance branch, which meant switching AI
+     * depth on silently discarded the chosen field: an edge trace or a gather
+     * quietly became a plain depth map. The silhouette is what the model is
+     * for; which surface the dots follow is a separate decision, and it is
+     * made here either way. */
     applyFieldSource(p);
   }
 
@@ -347,6 +352,16 @@ var CD = window.CD || {};
       return;
     }
 
+    /* One of the twelve named formations. It owes the photograph nothing —
+     * the height is built from the keyword — but it still arrives as a depth
+     * field, so placement, protection and copy space all keep working and the
+     * formation can be laid inside a silhouette as readily as across a frame. */
+    if (p.fieldSource === 'abstract' && CD.Abstract) {
+      state.dep = CD.withDepth(state.dep,
+        CD.Abstract.build(state.dep.w, state.dep.h, p.abstractField, p), p);
+      return;
+    }
+
     /* Gather: height is proximity to the focal point, so density concentrates
      * there and thins away from it. Built by the same generator as Concepts,
      * with the star influence off — this is about one point, not a geometry. */
@@ -389,6 +404,19 @@ var CD = window.CD || {};
 
   function stageLines(p) {
     p = withDerived(p);
+
+    /* A chosen formation replaces the tracer outright. It emits the same
+     * polylines the tracer does, so nothing downstream can tell the
+     * difference: the dots are still walked along a path by arc length and
+     * still read their size, spacing and colour from the depth field. What
+     * changes is who decided where the paths go — the picture, or you. */
+    var formed = CD.Formation.build({
+      viewW: state.viewW, viewH: state.viewH,
+      mask: state.region, fieldScale: state.fieldScale,
+      gate: CD.gateFor(p.edgeDissolve), params: p
+    });
+    if (formed) { state.lines = formed; return; }
+
     var tracer = new CD.Tracer({
       flow: state.flow,
       depth: state.dep.depth,
@@ -420,10 +448,18 @@ var CD = window.CD || {};
     state.dots = CD.buildDots(args);
   }
 
+  /* The palette may be a flat colour, a pair, or a gradient through three
+   * stops. All three are the same object to everything downstream, because
+   * the ramp is what everything downstream actually holds. */
+  function rampFor(p) {
+    if (p.colorStops && p.colorStops.length) return CD.makeRamp(p.colorStops);
+    return CD.makeRamp(p.colorFar, p.colorNear);
+  }
+
   function stageDraw() {
     var p = state.params;
     if (!ctx) return;
-    state.ramp = CD.makeRamp(p.colorFar, p.colorNear);
+    state.ramp = rampFor(p);
 
     ctx.save();
     ctx.fillStyle = p.background;
@@ -610,19 +646,37 @@ var CD = window.CD || {};
     afterDirection();
   }
 
-  function applyLayers() {
+  /* Changing one layer recomposes from the preset with that layer swapped,
+   * NOT from the layers alone. Composing from the layers alone quietly threw
+   * the preset's own settings away: moving the intensity on an abstract
+   * formation restored the relief that the preset had turned off, so the rings
+   * started to wobble, and moving the placement replaced the named field with
+   * a plain depth map — two settings nobody touched, changed by a control that
+   * had nothing to do with either.
+   *
+   * The behaviour is the one exception, because deciding what the dots read is
+   * precisely what it is for: when it changes, the preset's field source is
+   * dropped so the new behaviour can name its own. */
+  function applyLayers(key) {
+    var preset = CD.Art.PRESETS[state.params.preset] || {};
+    var extra = {};
+    Object.keys(preset.params || {}).forEach(function (k) { extra[k] = preset.params[k]; });
+    if (key === 'behaviour') delete extra.fieldSource;
+
     CD.Art.compose(state.params, {
+      content: state.params.content,
       behaviour: state.params.behaviour,
       placement: state.params.placement,
       intensity: state.params.intensity,
-      lead: state.params.lead
+      lead: state.params.lead,
+      params: extra
     }, state.touched);
     afterDirection();
   }
 
   function afterDirection() {
     CD.Art.applyPalette(state.params, state.params.palette);
-    if (ui) { ui.syncAll(); ui.modeChanged(state.params.placement); }
+    if (ui) { ui.syncAll(); ui.modeChanged(state.params); }
   }
 
   /* ==========================================================================
@@ -971,8 +1025,11 @@ var CD = window.CD || {};
         }
         if (key === 'preset') applyPreset();
         if (key === 'behaviour' || key === 'placement' ||
-            key === 'intensity' || key === 'lead') applyLayers();
+            key === 'intensity' || key === 'lead') applyLayers(key);
         if (key === 'palette') CD.Art.applyPalette(state.params, state.params.palette);
+        /* which controls can do anything depends on the formation as well as
+         * the placement, so both have to re-ask */
+        if (key === 'formation') ui.modeChanged(state.params);
         if (key === 'autoTune' && state.params.autoTune) runAuto();
         markDirty(stage);
       },

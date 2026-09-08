@@ -35,33 +35,39 @@ from luminance either way.
 
 ## The panel
 
-Four questions, in the order you actually answer them:
+Five questions, in the order you actually answer them:
 
 | section | what it settles |
 |---|---|
 | **Image** | what the tool reads in your picture |
-| **Place** | which part of the picture gets dots |
-| **Pattern** | how the dots are drawn |
+| **Direction** | the preset, and how expressive it is |
+| **Field** | what the dots read where there is no photograph |
+| **Pattern** | where the dots sit |
 | **Look** | colour, and what changes from near to far |
 
-Each section shows the three to five controls that matter and folds the rest
-behind a **More** button belonging to that section. Fourteen or fifteen
-controls up front depending on mode, the rest folded — and the detail sits with the thing it details, so
-wondering about scatter while you are in Pattern is one click, not a hunt
-through one long pile at the bottom.
+Each section shows the two to four controls that matter and folds the rest
+behind a **More** button belonging to that section — and the detail sits with
+the thing it details, so wondering about scatter while you are in Pattern is
+one click, not a hunt through one long pile at the bottom. A section with
+nothing to say for the current settings hides itself entirely: with no
+photograph loaded there is no Image section at all.
 
 Everything is named for what you will see change, in one or two words. A
 control called "Flow coherence" is only honest if you already know there is a
-flow field; if you do not, it is a dice roll. So it is "Form reach",
-"Despeckle", "Relief", "Edge fade", "Grid ↔ form".
+flow field; if you do not, it is a dice roll. So it is "Circle ↔ star",
+"Despeckle", "Relief", "Edge fade", "Follow the form".
 
-The whole panel measures **900px**, so it fits a laptop window without
-scrolling. No control carries its description in the layout: printed under
+The whole panel measures **900px on every one of the twenty presets**, with
+nothing overflowing — measured, not estimated. Getting there for v8 cost two
+rows: Behaviour and Placement moved into Direction's **More**, because a preset
+settles both of them and they are changed far less often than the Intensity
+beside them. Up top they cost two rows on every screen; folded they cost none
+until they are wanted. No control carries its description in the layout: printed under
 every row it doubled the height, and revealed on hover it was worse — the
 panel shifted under the cursor every time a control was touched, so reaching
 for a slider moved the row you were reaching for. The text is each row's
 tooltip instead, which costs no space and never reflows. Hovering and focusing
-all forty-nine controls moves zero rows; so does switching mode.
+every control moves zero rows; so does switching preset.
 
 The order is load-bearing. **Image** comes first because every mode builds on
 it: the modes decide where dots go, the image settings decide what those dots
@@ -82,31 +88,96 @@ zip — stored, not compressed, because an SVG and a page of text are not worth
 a deflate implementation. The record is generated from the schema, so it
 cannot drift out of date as controls are renamed.
 
-## Grid, without a grid mode
+## Formations: the layout is chosen, the picture comes through it
 
-There is no grid mode. **Grid ↔ follows the form** at 0 runs the rows straight
-and the dots read as a lattice; at 1 they wrap around the subject. One slider,
-and every value between is usable.
+There used to be one way the dots could be laid out — trace the picture's own
+contours and put dots along them — and one control over it, a slider asking how
+much the algorithm was allowed to bend the rows. That is a question about the
+code, not about the work.
 
-A separate lattice fill existed and has been taken out of the panel: it was a
-fourth thing to learn that produced a stiffer result than turning this slider
-down, because it threw away any knowledge of where the subject was. It is
-still there under Pattern → More for the cases where a truly flat lattice is
-wanted.
+A **formation** turns it around. The layout is decided in advance, and the
+picture is revealed *through* it: the dots grow and crowd where the subject is
+near, and shrink and thin where it falls away. The formation is the constant
+and the image is the variable, which is the right way round for a system that
+has to stay recognisable across hundreds of different photographs.
 
-## Four layers, not one list
+| formation | what it is |
+|---|---|
+| **Contour** | the picture decides the layout — the original behaviour |
+| **Rings** | concentric rings about a centre |
+| **Burst** | spokes out from a centre, doubling as they go |
+| **Spiral** | arms turning out from a centre, one per point |
+| **Lattice** | straight parallel rows at a set angle |
+| **Wave** | the same rows, travelling |
+
+All five of the built formations emit the same polylines the streamline tracer
+emits, so nothing downstream can tell them apart. Measured over an 900 px
+square at one spacing, they lay down within 8% of the same total path length —
+switching formation changes the character of the field, not how much ink is on
+the page:
+
+```
+concentric  175 rows   45,467 pts   123,070 px    evenness p90/p10  1.05
+radial      512 rows   48,919 pts   131,660 px                      1.16
+spiral      111 rows   45,361 pts   123,164 px                      1.04
+grid        134 rows   45,024 pts   122,101 px                      1.24
+wave        168 rows   45,291 pts   128,219 px                      1.13
+```
+
+Evenness is the ratio of the 90th to the 10th percentile of path length per
+cell over a 20×20 grid of the frame — 1.0 would be perfectly uniform. The
+radial formation needed work to get there: a fixed number of spokes is either a
+solid mass at the centre or a scatter at the edge, and doubling the count each
+octave leaves a visible seam where the density halves and jumps back. Spokes
+are therefore born *inside* an octave at radii taken from the golden-ratio
+sequence, so the count grows continuously. That took the measured spread from
+1.57 to 1.16.
+
+### Circle to star
+
+The three formations built about a centre share one radius function: the radius
+is multiplied by an N-fold lobe that returns exactly 1 at zero, so a ring is a
+circle to the pixel, and pulls the valleys in to 0.42 at full strength. One
+continuous axis rather than two shapes, which is why it is one slider.
+
+The star is a **parametric stand-in**, not the real mark. It has the right
+behaviour — an N-fold symmetry the field resolves towards — and it should be
+replaced by the actual logo construction before this is used for anything real.
+
+### Does the picture actually come through?
+
+Measured on the built-in sample through the Lattice formation, bucketing every
+dot by the depth it was drawn at:
+
+```
+depth band   dots    mean radius   mean gap    ink coverage
+0.00–0.17    5,208      0.51 px      8.19 px       1.1%
+0.17–0.33      364      0.80         6.99          3.1%
+0.33–0.50      667      1.07         6.31          6.1%
+0.50–0.67      934      1.37         5.61         11.3%
+0.67–0.83    1,891      1.73         4.86         20.7%
+0.83–1.00    1,348      2.13         4.68         32.7%
+```
+
+A 4.2× swing in dot size and a 1.75× swing in spacing, together giving a
+30× swing in ink. That is a working halftone, and it needed no new controls:
+size and along-path spacing were already reading the depth field, and a rigid
+formation simply lets them do all the talking.
+
+## Five layers, not one list
 
 The earlier modes mixed three decisions into one list: *full* described
 placement, *edge* described a behaviour, *background* described placement
 again. That does not scale — the moment a new behaviour or placement appears,
 every combination has to be re-enumerated.
 
-Four independent layers instead:
+Five independent layers instead:
 
 | layer | question | options |
 |---|---|---|
 | **Content** | what is being communicated | Concepts · Products · People |
-| **Behaviour** | what the field does | Form · Trace · Gather |
+| **Behaviour** | what the field reads | Form · Trace · Gather |
+| **Formation** | where the dots sit | Contour · Rings · Burst · Spiral · Lattice · Wave |
 | **Placement** | where it lives | Behind · Within · Around · whole frame |
 | **Intensity** | how expressive it is | Quiet · Supporting · Hero |
 
@@ -119,11 +190,15 @@ difference between the three: **Form** follows the subject's own shape,
 **Trace** follows the line where it ends, **Gather** follows distance from a
 focal point. Placement then decides which side of the outline they sit.
 
-## Six approved presets
+## Twenty presets, in three families
 
 Presets rather than guidelines, because a guideline gets interpreted and a
-preset gets used. Each names all four layers; the numbers come from the
-layers, so changing a behaviour reaches every preset that uses it.
+preset gets used. Each names all five layers; the numbers come from the layers,
+so changing a behaviour reaches every preset that uses it. They are kept in
+three groups in the list, because they are answers to different questions and
+running them together hides that.
+
+**Art direction** — what is being communicated decides the layout.
 
 | preset | region | field read | measured coverage |
 |---|---|---|---|
@@ -133,6 +208,62 @@ layers, so changing a behaviour reaches every preset that uses it.
 | People · Integrated | within | the picture | 19% |
 | Product · Showcase | behind | focal | 32% |
 | Product · Detail | around | distance | 2.3% |
+
+**Abstract formations** — twelve keywords, each given a shape. There is no
+photograph in any of them: the formation *is* the image, built as a height
+field in `js/abstract.js` and read by the dots exactly as a depth map would be.
+
+| keyword | formation | what you see | carrier |
+|---|---|---|---|
+| Emergence | Emerging core | a concentrated centre becoming visible inside a faint, diffuse circular field | Rings |
+| Ingenuity | Soft star | a rounded central mass stretching into four soft points | Rings, lightly starred |
+| Progress | Directional plume | an elongated form with a dense leading edge and a tapering trail | Lattice |
+| Convergence | Gathering field | several soft concentrations drawing in to one shared centre, with subtle channels | Rings |
+| Expansion | Expanding halo | a broad ring around an open centre, dissolving at its outer edge | Rings |
+| Adaptation | Flowing saddle | a continuous form that rises one way and dips the other, flexing without breaking | Wave |
+| Connection | Connecting bridge | two rounded masses joined by a narrow dotted neck | Lattice |
+| Collaboration | Interference bloom | two overlapping circular fields making a denser third where they meet | Rings |
+| Precision | Focused lens | a flattened ellipse concentrating into a tight central band | Lattice |
+| Transformation | Twisted column | a vertical form narrowing at its midpoint into differently oriented lobes | Lattice, vertical |
+| Synergy | Balanced lobes | rounded volumes gathered around a shared centre, distinct but one whole | Rings |
+| Momentum | Continuous wave | a stretched, gently oscillating ribbon carrying alternating concentrations | Wave |
+
+Every one of them is built from four primitives — a bell, a distance to a
+segment, an anisotropic blade and a graduated disc — which is what keeps the
+set coherent: twelve arrangements of the same handful of moves rather than
+twelve unrelated pieces of maths. Nothing draws a shape. Where a description
+says *points* or *lobes* it is the density that has the lobe, never the mark.
+
+The carrier is chosen to agree with the field rather than argue with it: rings
+for the fields built about a centre, rows for the ones that travel. Only
+Ingenuity gives its carrier any star at all, because there the four points are
+the idea and the rings reinforce them.
+
+**Image through a formation** — the other half of the same idea: a layout
+decided in advance, with a photograph coming through it. No photograph is
+drawn; the dots are the only thing on the page.
+
+| preset | formation | what carries the picture |
+|---|---|---|
+| Image · Rings | Rings | dot size and along-ring spacing |
+| Image · Lattice | Lattice | dot size and along-row spacing |
+
+### Checking that a formation still means what it says
+
+Twelve one-sentence descriptions are only worth having if something checks
+them, and these fields are tuned by eye — which is how a formation drifts away
+from the idea it was named for, one small adjustment at a time.
+
+```
+node docs/check-formations.js      # 36 assertions, one per clause
+```
+
+Every assertion is a clause of a description turned into a measurement. It has
+already earned its place three times over: it caught Convergence's channels
+sitting at exactly the level of the background they were meant to stand out
+from, Adaptation filling the frame with a diagonal gradient instead of being a
+contained form, and a 15% step in Progress's density exactly at the head of the
+plume, which rendered as a seam across the front of it.
 
 ## Intensity, and one parameter leading
 
@@ -180,11 +311,44 @@ automatically beats being exactly right only when someone remembers.
 **Copy space** is about the page: somewhere for the headline that was designed
 in rather than found by cropping afterwards.
 
-## Palette
+## Palette: solids, pairs and gradients
 
-Approved red and neutral pairs, checked for contrast, in place of two free
-colour wells. A colour picker is that decision handed back to whoever is in a
-hurry.
+Approved palettes, checked for contrast, in place of two free colour wells. A
+colour picker is that decision handed back to whoever is in a hurry.
+
+Each palette is a list of stops read from far to near — the far end of the
+surface first, so it can sit close to the background and let the form fade out
+rather than end on a hard edge. **One** stop is a flat colour and the depth
+channel has nothing to say; **two** is the tint the system has always had, to
+the byte; **three** is a transition that passes *through* a colour on its way,
+which cannot be faked by picking a pair — the midpoint of red and ice is a
+muddy pink.
+
+| palette | stops | ground |
+|---|---|---|
+| Red on black | `#4a0410 → #ff2233` | `#000000` |
+| Red on bone | `#f0d9d4 → #e01b2d` | `#f4efe9` |
+| Bone on red | `#c4172a → #f4efe9` | `#d81026` |
+| Neutral | `#3a352f → #e8e2da` | `#14120f` |
+| **Signal** | `#de2027 → #687099 → #c5eef9` | `#0c0e13` |
+| **Signal on bone** | `#c5eef9 → #687099 → #de2027` | `#f4efe9` |
+| Red, flat | `#de2027` | `#f4efe9` |
+| Ice, flat | `#c5eef9` | `#0c0e13` |
+
+The light variant runs the approved gradient the other way round on purpose: on
+bone, ice at the near end simply disappears, and the near end is the part you
+are meant to read.
+
+They are shown as swatch chips rather than named buttons — eight labelled
+buttons wrap onto four rows and say less than eight chips on one, and a
+gradient through three stops has no name that describes it. The chip is the
+ramp; its border is the ground the ramp sits on, because both halves of that
+decision matter and showing only one of them is exactly how a pale ramp gets
+picked for a pale ground.
+
+The SVG export carries the gradient as it carries everything else — the same
+bucketing the canvas uses, called from the same place, so a three-stop palette
+lands in the file as 32 `<g fill>` groups running red → periwinkle → ice.
 
 ## A mode is not a reset
 
@@ -193,9 +357,19 @@ the dots and then changing where they go threw the tuning away. A preset is a
 starting point for a control nobody has touched, not an instruction to discard
 a decision someone has already made.
 
-The panel now records what you move. Switching mode overwrites only the
-settings you have never touched, plus the three that *are* the mode — which
-region, whether depth comes from the picture or from distance to the outline,
+Changing one **layer** — the behaviour, the placement, the intensity —
+recomposes from the preset with that layer swapped, not from the layers alone.
+Composing from the layers alone threw the preset's own settings away: moving
+the intensity on an abstract formation restored the relief the preset had
+turned off, so the rings started to wobble, and moving the placement replaced
+the named field with a plain depth map. Two settings nobody touched, changed by
+a control that had nothing to do with either. The behaviour is the one
+exception, because deciding what the dots read is precisely what it is for.
+
+The panel also records what you move. Switching preset overwrites only the
+settings you have never touched, plus the ones that *are* the preset — which
+region, which formation, whether depth comes from the picture or from distance
+to the outline,
 and the band width. Measured: set Size to 6.5 and Spacing to 12, switch mode,
 and both are still 6.5 and 12.
 
@@ -255,7 +429,7 @@ Three controls depend on something outside the panel — the image carrying its
 own cut-out, or being able to fetch a model. When that thing is absent they
 now grey out and say why, instead of looking live and doing nothing.
 
-## Modes, and why there are only three
+## Placement, and why there are only three regions
 
 The obvious reading of "interaction with imagery", "background to imagery",
 "revealing imagery", "gridded versus fluid" and "with and without imagery" is
@@ -292,8 +466,13 @@ uncertain outline means dots scattered across the subject.
 Background and Edge do not read the picture's tones for depth. They read
 **distance from the outline**, because contours of a distance field are offset
 curves of the silhouette — which is what makes the rings belong to the subject
-rather than halftone whatever is behind it. **Grid ↔ form** still applies:
-Background at 1 gives the fingerprint rings, at 0 a straight grid.
+rather than halftone whatever is behind it.
+
+Placement composes with everything else rather than replacing it. An abstract
+formation set to sit **within** the subject is clipped to the silhouette and
+keeps being that formation: the Expanding halo placed within the sample head
+goes from 9,943 dots across the frame to 4,925 inside the outline, still
+reading `abstract` for its field.
 
 ## Telling the subject from the background
 
@@ -584,19 +763,17 @@ zero size exactly where it stops being drawn, rather than vanishing at a third
 of full size. Lines and dots share that one number, so they agree about where
 the region ends.
 
-## Fill modes
+## Filling the region
 
-Two ways to fill the region, and they suit different surfaces:
+**Contour** strings dots along the evenly-spaced streamlines. Anything with
+curvature — a cheek, a tyre, a shoulder — bands the way the reference does,
+because the iso-depth contours of a round thing are rings. Broad flat surfaces
+are where contour bands have little to follow and start to wander.
 
-**Contour** (the default) strings dots along the evenly-spaced streamlines.
-Anything with curvature — a cheek, a tyre, a shoulder — bands the way the
-reference does, because the iso-depth contours of a round thing are rings.
-
-**Grid fill** lays a hexagonally-packed lattice instead, at the base angle.
-Broad flat surfaces are where contour bands have little to follow and start to
-wander; a lattice reads as a straight halftone there and holds still. Size,
-colour and relief still come from depth and rotation still comes from flow, so
-the two modes sit in the same picture without disagreeing.
+That is what the built formations are for, and they replaced an earlier
+hexagonal grid fill that was a separate code path with its own dot builder.
+A formation emits the same polylines the tracer emits, so there is one dot
+builder and one set of controls; see **Formations** above.
 
 ## Keeping the lines intact
 
@@ -758,41 +935,42 @@ across all shape types; the remainder is antialiasing on dot edges.
 
 ## Controls
 
-**Depth source** — Estimate depth (Depth Anything V2 instead of luminance),
-Show depth map (field 1 as a greyscale underlay).
+Written from the schema in `js/ui.js`, which is also what writes the settings
+file the Download button ships, so the two cannot drift apart.
 
-**Silhouette** — Use image alpha, Silhouette cut, Silhouette despeckle,
-Silhouette cleanup.
+**Image** — Auto, Brightness, Contrast, Subject from · *More:* Cutoff, Invert,
+Smoothing, Plate tolerance, Depth split, Fill holes, Despeckle, Depth range,
+Shadow floor, Use alpha, Cut out subject, AI depth, Preview depth.
 
-**Overlay** — Show photograph, Photo fade, Photo hand-over (fades the picture
-out as the dots come up), Partial overlay (the wipe), Wipe position / angle /
-softness, Edge dissolve.
+**Direction** — Preset, Intensity · *More:* Behaviour, Placement, Photo, Led
+by, Protect subject, Protect size, Copy space, Copy side, Reveal + position /
+angle / softness, Photo hand-over, Photo fade, Band width.
 
-**Image** — Depth floor (where the relief starts; no longer carves the
-silhouette), Contrast, Invert depth (for a subject lit dark-on-light).
+**Field** — Formation (which of the twelve), Expand ↔ converge · *More:*
+Centre across / down, Field size, Lobes, Reach, Direction, Star points, Star
+influence.
 
-**Depth** — Depth exaggeration (shifts each dot along the relief field; this
-is what makes the bands bulge towards the viewer rather than read as a flat
-contour map), Relief coherence (how far that field is smoothed before it is
-applied), Depth contrast, Depth smoothing (turns a noisy photograph into a
-continuous surface — contours need this).
+**Pattern** — Formation (which layout), Circle ↔ star, Join into nodes ·
+*More:* Follow the form, Size, Spacing, Edge fade, Angle, Align rows, Size
+varies, Scatter, Relief, Relief smoothing.
 
-**Contours** — Line density, Line spacing, Flow strength (0 = straight lines
-at the base angle, 1 = pure depth contours), Flow distortion, Base angle,
-Flow coherence.
+**Look** — Size varies, Colour varies, Palette · *More:* Density varies, Fade,
+Tint from photo.
 
-**Dots** — Grid fill, Shape, Dot size, Size variation, Size falloff, Dot
-spacing, Randomness, Row align (locks the dots to a common phase across
-contours), Jitter along (how much of that randomness runs along the contour
-rather than across it).
+Two of those rows are named Formation and mean different things, which is
+deliberate rather than an oversight: in **Field** it is *which of the twelve
+named formations the dots read*, in **Pattern** it is *which layout the dots
+sit on*. They never appear at the same time unless an abstract field is in
+play, which is exactly the case where both questions are live.
 
-**Depth mapping** — Depth → size, Depth → colour, Depth → opacity, Depth →
-density, Tint from image.
-
-**Colour** — Background, Far colour, Near colour, Colour falloff.
-
-Dot spacing is floored at a little over one dot diameter, so the largest,
-densest dots cannot fuse into a solid line and collapse the halftone into fill.
+A control only ever appears when it can do something. Three ways to say when:
+`modes` scopes to a placement, `forms` scopes to a formation, and `when` is a
+predicate for the handful that depend on something else — whether the field is
+generated, whether a focal point is read at all. A control that cannot act is
+worse than a missing one: it invites a change that has no effect, and quietly
+teaches that the panel is not to be trusted. The settings file uses the very
+same predicate, so a control that could not act on this render is not part of
+its record either.
 
 ## Getting a good result from a photograph
 
@@ -912,16 +1090,18 @@ js/core.js            Field container (bilinear sampling, separable blur), resam
 js/field.js           depth field, gradient, flow field, region field
 js/streamlines.js     evenly-spaced streamline tracer + spatial hash
 js/shapes.js          the dot primitive, drawDot, SVG shape upload
-js/dots.js            contour + grid fills, edge dissolve, colour ramp
+js/dots.js            dots along a path, edge dissolve, N-stop colour ramp
+js/formation.js       the five built layouts: rings, burst, spiral, lattice, wave
 js/svgexport.js       vector export
 js/depthmodel.js      Depth Anything V2 in the browser (transformers.js)
-js/presets.js         the three modes; look parameters only
 js/auto.js            reads the plate; image parameters only
-js/artdirection.js    the four layers, the six presets, intensity, palette
+js/artdirection.js    the five layers, the twenty presets, intensity, palette
 js/generative.js      the field for Concepts, where there is no photograph
+js/abstract.js        the twelve named formations, as height fields
 js/matte.js           telling subject from background: plate, depth, alpha
 js/zip.js             tiny stored-entry zip writer, for Download
 js/ui.js              declarative control schema + panel
 js/app.js             p5 sketch, pipeline orchestration, I/O
+docs/check-formations.js   36 assertions against the twelve descriptions
 vendor/p5.min.js      p5.js 1.9.4
 ```

@@ -234,16 +234,47 @@ var CD = window.CD || {};
     return ci * ab + ai;
   }
 
-  /* Depth -> colour ramp. Far end of the surface sits close to the background
-   * so the form fades out instead of ending on a hard edge. */
-  function makeRamp(farHex, nearHex) {
-    var f = hexToRgb(farHex), n = hexToRgb(nearHex);
+  /* Depth -> colour ramp, over any number of stops.
+   *
+   * Two stops was the whole vocabulary until now: a far colour and a near one,
+   * with the far end sitting close to the background so the form fades out
+   * instead of ending on a hard edge. That covers a tint, and it cannot do a
+   * transition that passes THROUGH a third colour on its way — a red that
+   * cools through a blue-grey into pale ice is three stops or it is nothing,
+   * because the midpoint of red and ice is a muddy pink.
+   *
+   * So the ramp takes a list. One stop is a flat colour and the depth channel
+   * simply has nothing to say; two is exactly the old behaviour, to the byte;
+   * three or more are walked segment by segment.
+   *
+   *   makeRamp(['#de2027', '#687099', '#c5eef9'])   gradient
+   *   makeRamp('#4a0410', '#ff2233')                far, near — as before
+   */
+  function makeRamp(stops, nearHex) {
+    var list = Array.isArray(stops) ? stops : [stops, nearHex];
+    var rgb = [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] === undefined || list[i] === null) continue;
+      rgb.push(hexToRgb(list[i]));
+    }
+    if (!rgb.length) rgb.push([0, 0, 0]);
+
+    if (rgb.length === 1) {
+      var only = rgb[0];
+      return function () { return only; };
+    }
+
+    var last = rgb.length - 1;
     return function (d, gamma) {
-      var t = Math.pow(clamp(d, 0, 1), gamma || 1);
+      var t = Math.pow(clamp(d, 0, 1), gamma || 1) * last;
+      var i0 = Math.floor(t);
+      if (i0 >= last) i0 = last - 1;
+      var f = t - i0;
+      var a = rgb[i0], b = rgb[i0 + 1];
       return [
-        Math.round(lerp(f[0], n[0], t)),
-        Math.round(lerp(f[1], n[1], t)),
-        Math.round(lerp(f[2], n[2], t))
+        Math.round(lerp(a[0], b[0], f)),
+        Math.round(lerp(a[1], b[1], f)),
+        Math.round(lerp(a[2], b[2], f))
       ];
     };
   }

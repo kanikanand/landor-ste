@@ -6,10 +6,12 @@
  * placement again. That does not scale, because the moment a new behaviour or
  * a new placement appears every combination has to be re-enumerated.
  *
- * Four independent layers instead:
+ * Five independent layers instead:
  *
  *   CONTENT     what is being communicated   concepts | products | people
- *   BEHAVIOUR   what the field does          form | trace | gather
+ *   BEHAVIOUR   what the field reads         form | trace | gather
+ *   FORMATION   where the dots sit           contour | rings | burst | spiral
+ *                                            | lattice | wave
  *   PLACEMENT   where it lives               behind | within | around | none
  *   INTENSITY   how expressive it is         quiet | supporting | hero
  *
@@ -72,6 +74,41 @@ var CD = window.CD || {};
   };
 
   /* --------------------------------------------------------------------------
+   * Formation — the layout the dots are laid out on
+   *
+   * Behaviour says what the dots READ. Formation says where they SIT. Those
+   * are genuinely separate questions, and collapsing them was the flaw in the
+   * old "grid to form" slider: it asked how much the algorithm was allowed to
+   * bend the rows, which is a question about the code and not about the work.
+   *
+   * Contour is the original answer — the picture decides the layout. The other
+   * five decide it in advance, and the picture comes through them instead, as
+   * dots that grow and crowd where the subject is near and shrink and thin
+   * where it falls away. That is the right way round for a system that has to
+   * stay recognisable across hundreds of different photographs: the formation
+   * is the constant, the image is the variable.
+   *
+   * `radiates` marks the three built about a centre. They share the circle-to-
+   * star axis and the focal point; the other two share an angle instead.
+   * ------------------------------------------------------------------------*/
+  var FORMATION = {
+    contour:    { label: 'Contour',
+                  hint: 'The picture decides the layout. Rows follow its own shape.' },
+    concentric: { label: 'Rings', radiates: true,
+                  hint: 'Rings out from a centre. The clearest read of circle to star.' },
+    radial:     { label: 'Burst', radiates: true,
+                  hint: 'Spokes out from a centre, doubling as they go so the density holds.' },
+    spiral:     { label: 'Spiral', radiates: true,
+                  hint: 'Arms turning out from a centre. One per point.' },
+    grid:       { label: 'Lattice',
+                  hint: 'Straight parallel rows at a set angle.' },
+    wave:       { label: 'Wave',
+                  hint: 'The same rows, travelling.' }
+  };
+
+  var FORMATION_ORDER = ['contour', 'concentric', 'radial', 'spiral', 'grid', 'wave'];
+
+  /* --------------------------------------------------------------------------
    * Intensity, and the restraint that keeps it from reading as noise
    *
    * Intensity is deliberately ONE control that moves several numbers together.
@@ -127,6 +164,7 @@ var CD = window.CD || {};
     conceptHero: {
       label: 'Concept · Hero',
       note: 'A large expressive field and no photograph. The dots are the image.',
+      formation: 'contour',
       content: 'concepts', behaviour: 'form', placement: 'none',
       intensity: 'hero', lead: 'density',
       params: { showPhoto: false, wipe: false, copySpace: 0.32, copyAngle: 270,
@@ -135,6 +173,7 @@ var CD = window.CD || {};
     conceptQuiet: {
       label: 'Concept · Quiet',
       note: 'A sparse field or a cropped fragment, supporting type rather than competing with it.',
+      formation: 'contour',
       content: 'concepts', behaviour: 'form', placement: 'none',
       intensity: 'quiet', lead: 'coverage',
       params: { showPhoto: false, wipe: false, copySpace: 0.5, copyAngle: 270,
@@ -143,6 +182,7 @@ var CD = window.CD || {};
     peopleEnvironmental: {
       label: 'People · Environmental',
       note: 'Dots behind and around the person. The face is never touched.',
+      formation: 'contour',
       content: 'people', behaviour: 'gather', placement: 'behind',
       intensity: 'supporting', lead: 'density',
       params: { showPhoto: true, wipe: false, protect: 0.55, copySpace: 0 }
@@ -150,6 +190,7 @@ var CD = window.CD || {};
     peopleIntegrated: {
       label: 'People · Integrated',
       note: 'A controlled dissolve through clothing and the lower body, face left clear.',
+      formation: 'contour',
       content: 'people', behaviour: 'form', placement: 'within',
       intensity: 'supporting', lead: 'coverage',
       params: { showPhoto: true, wipe: true, wipeAngle: 90, wipePosition: 0.55,
@@ -158,6 +199,7 @@ var CD = window.CD || {};
     productShowcase: {
       label: 'Product · Showcase',
       note: 'The object stays sharp and intact; the field supports it from behind.',
+      formation: 'contour',
       content: 'products', behaviour: 'gather', placement: 'behind',
       intensity: 'supporting', lead: 'density',
       params: { showPhoto: true, wipe: false, protect: 0, copySpace: 0.2, copyAngle: 0 }
@@ -165,6 +207,7 @@ var CD = window.CD || {};
     productDetail: {
       label: 'Product · Detail',
       note: 'A localised contour along one meaningful edge, opening into the background.',
+      formation: 'contour',
       content: 'products', behaviour: 'trace', placement: 'around',
       intensity: 'quiet', lead: 'coverage',
       params: { showPhoto: true, wipe: true, wipeAngle: 0, wipePosition: 0.45,
@@ -172,8 +215,105 @@ var CD = window.CD || {};
     }
   };
 
-  var PRESET_ORDER = ['conceptHero', 'conceptQuiet', 'peopleEnvironmental',
-                      'peopleIntegrated', 'productShowcase', 'productDetail'];
+  /* --------------------------------------------------------------------------
+   * The dot patterns
+   *
+   * The same machinery, pointed at a different question. An art direction
+   * preset starts from what is being communicated and lets the picture decide
+   * the layout. A dot pattern starts from a layout that has already been
+   * decided, and something else comes through it.
+   *
+   * TWELVE ABSTRACT FORMATIONS. Each is a keyword given a shape — emergence,
+   * ingenuity, progress and the rest — built as a height field in abstract.js
+   * and read by the dots exactly as a depth map would be. There is no
+   * photograph in any of them; the formation IS the image. Relief is off in
+   * every one: a displacement that reads as bulge on a contour reads as a
+   * wobble on a ring, and a wobbly ring is a mistake rather than a form.
+   *
+   * The carrier formation is chosen to agree with the field rather than argue
+   * with it — rings for the fields built about a centre, spokes for the one
+   * that gathers inwards, rows for the ones that travel. Only Ingenuity gives
+   * its carrier any star at all, because there the four points ARE the idea
+   * and the rings reinforce them; everywhere else the field speaks alone.
+   *
+   * TWO IMAGE PATTERNS. The other half of the same idea: a formation decided
+   * in advance, with a photograph coming through it as dots that grow and
+   * crowd where the subject is near. No photograph is drawn — the dots are
+   * the only thing on the page, and the picture is legible from density.
+   * ------------------------------------------------------------------------*/
+  var PATTERN_PARAMS = {
+    showPhoto: false, wipe: false, copySpace: 0, protect: 0,
+    sizeDepth: 1, densityDepth: 1, colorDepth: 1, depthExaggeration: 0,
+    starness: 0
+  };
+
+  function pattern(label, note, base, extra) {
+    var p = { label: label, note: note, behaviour: 'form', placement: 'none',
+              intensity: 'supporting', lead: 'density', params: {} };
+    Object.keys(base).forEach(function (k) { p[k] = base[k]; });
+    Object.keys(PATTERN_PARAMS).forEach(function (k) { p.params[k] = PATTERN_PARAMS[k]; });
+    Object.keys(extra || {}).forEach(function (k) { p.params[k] = extra[k]; });
+    return p;
+  }
+
+  /* keyword -> the carrier it is laid on, and any carrier setting it needs */
+  var ABSTRACT_CARRIER = {
+    emergence:      ['concentric', {}],
+    ingenuity:      ['concentric', { starness: 0.35, starPoints: 4 }],
+    progress:       ['grid',       { flowAngle: 0, rowAlign: 1 }],
+    convergence:    ['concentric', {}],
+    expansion:      ['concentric', {}],
+    adaptation:     ['wave',       { flowAngle: 0 }],
+    connection:     ['grid',       { flowAngle: 0, rowAlign: 1 }],
+    collaboration:  ['concentric', {}],
+    precision:      ['grid',       { flowAngle: 0, rowAlign: 1 }],
+    transformation: ['grid',       { flowAngle: 90, rowAlign: 1 }],
+    synergy:        ['concentric', {}],
+    momentum:       ['wave',       { flowAngle: 0 }]
+  };
+
+  var ABSTRACT_KEYS = [];
+
+  /* Built from abstract.js rather than restated here, so a formation cannot
+   * exist in one file and be missing from the other. */
+  if (CD.Abstract) {
+    CD.Abstract.ORDER.forEach(function (name) {
+      var m = CD.Abstract.META[name];
+      var carrier = ABSTRACT_CARRIER[name] || ['concentric', {}];
+      var extra = { fieldSource: 'abstract', abstractField: name };
+      Object.keys(carrier[1]).forEach(function (k) { extra[k] = carrier[1][k]; });
+      var key = 'abstract_' + name;
+      PRESETS[key] = pattern(m.keyword + ' \u2014 ' + m.name, m.note,
+        { content: 'concepts', formation: carrier[0] }, extra);
+      ABSTRACT_KEYS.push(key);
+    });
+  }
+
+  PRESETS.imageRings = pattern('Image \u00b7 Rings',
+    'Concentric rings across the whole frame. The picture is the only reason ' +
+    'they are not all identical: the dots grow and crowd where it is near.',
+    { content: 'products', formation: 'concentric' },
+    { focusX: 0.5, focusY: 0.5 });
+
+  PRESETS.imageLattice = pattern('Image \u00b7 Lattice',
+    'Straight rows, and the picture read off them as a halftone. The most ' +
+    'neutral carrier there is, and the most legible.',
+    { content: 'products', formation: 'grid' },
+    { flowAngle: 0, rowAlign: 1 });
+
+  /* Three families, kept apart in the list: they are answers to different
+   * questions, and running twelve into six into two hides that. */
+  var PRESET_GROUPS = [
+    { label: 'Art direction',
+      keys: ['conceptHero', 'conceptQuiet', 'peopleEnvironmental',
+             'peopleIntegrated', 'productShowcase', 'productDetail'] },
+    { label: 'Abstract formations', keys: ABSTRACT_KEYS },
+    { label: 'Image through a formation', keys: ['imageRings', 'imageLattice'] }
+  ];
+
+  var PRESET_ORDER = PRESET_GROUPS.reduce(function (a, g) {
+    return a.concat(g.keys);
+  }, []);
 
   /* --------------------------------------------------------------------------
    * Palette
@@ -182,19 +322,45 @@ var CD = window.CD || {};
    * checked for contrast is a decision already made; a colour picker is that
    * decision handed back to whoever is in a hurry.
    * ------------------------------------------------------------------------*/
+  /* Each entry is a list of stops read from far to near — the far end of the
+   * surface first, so it can sit close to the background and let the form fade
+   * out rather than end on a hard edge. One stop is a flat colour; two is the
+   * tint the system has always had; three is a transition that passes THROUGH
+   * a colour on its way, which is a different thing entirely and cannot be
+   * faked by picking a pair.
+   *
+   * The three-stop set is the approved gradient. Its light variant runs the
+   * stops the other way round on purpose: on bone, ice at the near end simply
+   * disappears, and the whole point of the near end is that it is the part you
+   * are meant to read. */
   var PALETTES = [
-    { label: 'Red on black',  dot: '#ff2233', far: '#4a0410', bg: '#000000' },
-    { label: 'Red on bone',   dot: '#e01b2d', far: '#f0d9d4', bg: '#f4efe9' },
-    { label: 'Bone on red',   dot: '#f4efe9', far: '#c4172a', bg: '#d81026' },
-    { label: 'Neutral',       dot: '#e8e2da', far: '#3a352f', bg: '#14120f' }
+    { label: 'Red on black',   stops: ['#4a0410', '#ff2233'], bg: '#000000' },
+    { label: 'Red on bone',    stops: ['#f0d9d4', '#e01b2d'], bg: '#f4efe9' },
+    { label: 'Bone on red',    stops: ['#c4172a', '#f4efe9'], bg: '#d81026' },
+    { label: 'Neutral',        stops: ['#3a352f', '#e8e2da'], bg: '#14120f' },
+    { label: 'Signal',         stops: ['#de2027', '#687099', '#c5eef9'], bg: '#0c0e13' },
+    { label: 'Signal on bone', stops: ['#c5eef9', '#687099', '#de2027'], bg: '#f4efe9' },
+    { label: 'Red, flat',      stops: ['#de2027'], bg: '#f4efe9' },
+    { label: 'Ice, flat',      stops: ['#c5eef9'], bg: '#0c0e13' }
   ];
 
+  /* colorNear and colorFar are still written, because the joining strokes and
+   * the exporter want one colour and one background rather than a ramp. */
   function applyPalette(params, index) {
     var p = PALETTES[clamp(index | 0, 0, PALETTES.length - 1)];
-    params.colorNear = p.dot;
-    params.colorFar = p.far;
+    params.colorStops = p.stops.slice();
+    params.colorFar = p.stops[0];
+    params.colorNear = p.stops[p.stops.length - 1];
     params.background = p.bg;
     return params;
+  }
+
+  /* The CSS gradient that shows what a palette is, for the swatch on the
+   * button. A single stop has to be named twice or the browser refuses it. */
+  function paletteCss(index) {
+    var p = PALETTES[clamp(index | 0, 0, PALETTES.length - 1)];
+    var s = p.stops.length > 1 ? p.stops : [p.stops[0], p.stops[0]];
+    return 'linear-gradient(90deg,' + s.join(',') + ')';
   }
 
   /* --------------------------------------------------------------------------
@@ -213,8 +379,15 @@ var CD = window.CD || {};
     Object.keys(beh.params).forEach(function (k) { out[k] = beh.params[k]; });
     out.regionSource = place.region;
     /* Concepts have no subject to read, so the field is generated rather than
-     * measured; every other behaviour names its own source. */
-    out.fieldSource = choice.placement === 'none' ? 'generative' : beh.field;
+     * measured; every other behaviour names its own source.
+     *
+     * This used to key off placement — whole-frame meant generated. That was
+     * right while whole-frame only ever happened with no photograph, and wrong
+     * the moment a formation covered the whole frame WITH one: a lattice laid
+     * across a portrait must read the portrait, not a field invented in its
+     * place. Content is what actually decides it, so content is what is
+     * asked. For all six of the original presets this is the same answer. */
+    out.fieldSource = choice.content === 'concepts' ? 'generative' : beh.field;
 
     applyIntensity(out, choice.intensity, choice.lead);
 
@@ -222,7 +395,7 @@ var CD = window.CD || {};
     Object.keys(extra).forEach(function (k) { out[k] = extra[k]; });
 
     /* what defines the choice is always written; the rest yields to the user */
-    var DEFINING = { regionSource: 1, fieldSource: 1 };
+    var DEFINING = { regionSource: 1, fieldSource: 1, formation: 1 };
     Object.keys(out).forEach(function (k) {
       if (DEFINING[k] || !keep[k]) params[k] = out[k];
     });
@@ -236,15 +409,18 @@ var CD = window.CD || {};
     params.placement = preset.placement;
     params.intensity = preset.intensity;
     params.lead = preset.lead;
+    params.formation = preset.formation || 'contour';
     return compose(params, preset, keep);
   }
 
   CD.Art = {
     CONTENT: CONTENT, BEHAVIOUR: BEHAVIOUR, PLACEMENT: PLACEMENT,
+    FORMATION: FORMATION, FORMATION_ORDER: FORMATION_ORDER,
     INTENSITY: INTENSITY, PRESETS: PRESETS, PRESET_ORDER: PRESET_ORDER,
-    PALETTES: PALETTES,
+    PRESET_GROUPS: PRESET_GROUPS, PALETTES: PALETTES,
     SIZE_MIN: SIZE_MIN, SIZE_MAX: SIZE_MAX,
     compose: compose, applyPreset: applyPreset,
-    applyIntensity: applyIntensity, applyPalette: applyPalette
+    applyIntensity: applyIntensity, applyPalette: applyPalette,
+    paletteCss: paletteCss
   };
 })(CD);
