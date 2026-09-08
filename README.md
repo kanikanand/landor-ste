@@ -39,22 +39,29 @@ Four questions, in the order you actually answer them:
 
 | section | what it settles |
 |---|---|
-| **Image** | what the tool is seeing in your picture |
-| **Place** | where the dots go, and how much photograph stays |
-| **Pattern** | what the dots look like |
-| **Depth response** | what changes between near and far |
-| **Colour** | |
+| **Image** | what the tool reads in your picture |
+| **Place** | which part of the picture gets dots |
+| **Pattern** | how the dots are drawn |
+| **Look** | colour, and what changes from near to far |
 
-Each section shows the four or five controls that matter and folds the rest
-behind a **More** button belonging to that section. Nineteen controls up
-front, thirty behind five buttons — and the detail sits with the thing it
-details, so wondering about scatter while you are in Pattern is one click, not
-a hunt through one long pile at the bottom.
+Each section shows the three to five controls that matter and folds the rest
+behind a **More** button belonging to that section. Sixteen controls up front,
+thirty-three folded — and the detail sits with the thing it details, so
+wondering about scatter while you are in Pattern is one click, not a hunt
+through one long pile at the bottom.
 
-Everything is named for what you will see change. A control called "Flow
-coherence" is only honest if you already know there is a flow field; if you do
-not, it is a dice roll. So it is now "How far the form carries", "Clean up the
-outline", "Push dots out with the form", "Fade out at the edges".
+Everything is named for what you will see change, in one or two words. A
+control called "Flow coherence" is only honest if you already know there is a
+flow field; if you do not, it is a dice roll. So it is "Form reach",
+"Despeckle", "Relief", "Edge fade", "Grid ↔ form".
+
+The whole panel measures **900px**, so it fits a laptop window without
+scrolling. No control carries its description in the layout: printed under
+every row it doubled the height, and revealed on hover it was worse — the
+panel shifted under the cursor every time a control was touched, so reaching
+for a slider moved the row you were reaching for. The text is each row's
+tooltip instead, which costs no space and never reflows. Hovering and focusing
+all forty-nine controls moves zero rows; so does switching mode.
 
 The order is load-bearing. **Image** comes first because every mode builds on
 it: the modes decide where dots go, the image settings decide what those dots
@@ -63,6 +70,10 @@ image never touches the mode — the two sets share no parameter, and there is a
 test that says so.
 
 ## Download
+
+There is one button, and it is the only export. Reseed and Reset are gone:
+reseeding only re-rolled the random scatter, which is invisible unless Scatter
+is turned well up, and Reset was a worse version of reloading the page.
 
 One button, one folder: the SVG and a plain-text record of every setting that
 produced it, written in the same words the panel uses, plus what auto-adjust
@@ -92,7 +103,7 @@ they are one axis and three switches:
 
 | decision | options | what it settles |
 |---|---|---|
-| **Mode** | Surface · Fingerprint · Interaction | where the dots live relative to the subject |
+| **Mode** | Full · Background · Edge | which region of the picture gets dots |
 | **Photograph** | on · off | whether the picture is present at all |
 | **Reveal** | on · off + position | the hand-over between picture and dots |
 
@@ -102,16 +113,26 @@ can reveal or not, any of them can drop the photograph. Enumerated as presets
 that would have been twelve buttons, each going stale the moment a new region
 source is added.
 
-**Surface** puts dots on the subject — the form drawn out of the picture, with
-Reveal handing it over. **Fingerprint** puts them outside it: the subject stays
-a photograph and the pattern becomes the ground it sits on. **Interaction**
-puts them in a band straddling the outline, so pattern and subject interlock
-rather than one sitting inside the other.
+The three differ in **which region gets dots**, and the difference has to be
+visible at a glance or they are one mode wearing three names. Measured in the
+browser on one plate:
 
-Fingerprint and Interaction do not read the picture's tones for depth. They
-read **distance from the outline**, because contours of a distance field are
-offset curves of the silhouette — which is what makes the rings read as
-belonging to the subject rather than as a halftone of whatever is behind it.
+| | region | share of the frame | dots on the subject |
+|---|---|---|---|
+| **Full** | all of it, varying with light and depth | 100% | proportional |
+| **Background** | the ground only | 54% | **0%** |
+| **Edge** | the outline between them | 4.2% | straddles it |
+
+Background dilates the silhouette slightly before subtracting it, so the dots
+stop short of the subject instead of crowding its edge. Reading `1 - mask`
+directly let dots sit anywhere the outline was merely soft, which on an
+uncertain outline means dots scattered across the subject.
+
+Background and Edge do not read the picture's tones for depth. They read
+**distance from the outline**, because contours of a distance field are offset
+curves of the silhouette — which is what makes the rings belong to the subject
+rather than halftone whatever is behind it. **Grid ↔ form** still applies:
+Background at 1 gives the fingerprint rings, at 0 a straight grid.
 
 ## Auto-tune: the controls that have a right answer
 
@@ -123,8 +144,8 @@ meant every new image began by rediscovering them, and getting one wrong made
 every downstream control misbehave.
 
 Auto reads, in one pass: the border against the frame centre for **polarity**;
-border statistics and Otsu's threshold, whichever is higher, for **where the
-background ends**; the subject's own 2nd and 98th percentiles for **exposure
+the border's lower quartile and spread for **where the background ends**, with
+Otsu's threshold as a cap rather than a floor; the subject's own 2nd and 98th percentiles for **exposure
 and contrast**; and a Laplacian median for **noise**, which sets all three
 smoothing radii.
 
@@ -150,6 +171,12 @@ Two findings from building it, both of which are now load-bearing:
   was accounted for, the underexposed plate came out at a third the strand
   length of the others: auto was setting clean-render smoothing on a field it
   had just stretched by two.
+- **Otsu is a cap, not a floor.** Used as a floor it is actively wrong on a
+  portrait: a hard-lit face has enough dark tone that the variance split lands
+  inside the subject. On a test plate that discarded **15% of the face**, where
+  a cut three times lower kept **97%** of it with no background bleeding in.
+  The border's lower quartile is the reading that counts, because it stays
+  background even when the subject runs off the edge of the frame.
 - **The contrast curve pivots on 0.5.** A subject sitting at 0.35 gets pushed
   lower as it is stretched, and its shadow end clips to a flat zero — a region
   with no gradient at all, where the flow field is degenerate. A new
