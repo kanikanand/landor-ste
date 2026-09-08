@@ -25,6 +25,9 @@ var CD = window.CD || {};
     fieldW: 0, fieldH: 0, fieldScale: 1,
     dep: null, region: null, tone: null, flow: null, lines: [], dots: [],
     hasAlpha: false,     // the source carries its own silhouette
+    backCanvas: null,    // the empty-set frame, when one has been loaded
+    maskFrom: 'brightness',
+    matte: null,
     auto: null,          // what the tuner read off the plate
     modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
     modelBusy: false,
@@ -150,6 +153,34 @@ var CD = window.CD || {};
     if (state.params.modelDepth) ensureModelDepth();
   }
 
+  /* The empty set, loaded as a second frame. Kept at the source's own size;
+   * it is only ever sampled at the analysis grid. */
+  function loadBackplate(file) {
+    if (!file || !/^image\//.test(file.type)) {
+      status('That file is not an image.', true);
+      return;
+    }
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      var c = document.createElement('canvas');
+      var max = 1600;
+      var sc = Math.min(1, max / Math.max(img.width, img.height));
+      c.width = Math.max(1, Math.round(img.width * sc));
+      c.height = Math.max(1, Math.round(img.height * sc));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      state.backCanvas = c;
+      markDirty('depth');
+      status('Background plate loaded — the subject is now cut out by difference.');
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      status('Could not decode that image.', true);
+    };
+    img.src = url;
+  }
+
   function loadImageFile(file) {
     if (!file) return;
     if (!/^image\//.test(file.type)) {
@@ -199,9 +230,8 @@ var CD = window.CD || {};
     g.drawImage(state.srcCanvas, 0, 0, fw, fh);
     var px = g.getImageData(0, 0, fw, fh).data;
 
-    var alpha = p.useAlpha === false ? null : CD.alphaCoverage(px, fw * fh);
-    state.hasAlpha = !!alpha;
     state.tone = CD.toneField(px, fw, fh);
+    var alpha = chooseCoverage(p, px, fw, fh);
 
     if (p.modelDepth && state.modelDepth) {
       var md = state.modelDepth;
@@ -212,6 +242,57 @@ var CD = window.CD || {};
 
     state.dep = CD.buildDepth(px, fw, fh, p, alpha);
     applyFieldSource(p);
+  }
+
+  /* Which reading decides where the subject is. Brightness is the fallback
+   * because it needs nothing, not because it is good: on a subject that sits
+   * both above and below the ground's own level — a lit face and dark hair
+   * against a mid-grey wall — no cutoff exists that separates them, and the
+   * modes end up drawing the light-and-shadow line across the face instead of
+   * the person's outline. The other three sources do not have that failure. */
+  function chooseCoverage(p, px, fw, fh) {
+    var n = fw * fh;
+    var src = p.maskSource || 'auto';
+    var alpha = p.useAlpha === false ? null : CD.alphaCoverage(px, n);
+    state.hasAlpha = !!alpha;
+    state.maskFrom = 'brightness';
+    state.matte = null;
+
+    /* A second frame of the empty set: the subject is wherever the two
+     * differ. Exact, and it needs nothing but the extra exposure. */
+    if ((src === 'auto' || src === 'backplate') && state.backCanvas) {
+      var bg = rasterise(state.backCanvas, fw, fh);
+      var m = CD.Matte.backplate(px, bg, n, p.maskTolerance, 0.04);
+      var q = CD.Matte.quality(m, n);
+      state.matte = q;
+      if (q.usable || src === 'backplate') { state.maskFrom = 'backplate'; return m; }
+    }
+
+    /* The subject is the near part. Works from one frame and ignores tone. */
+    if ((src === 'auto' || src === 'depth') && p.modelDepth && state.modelDepth) {
+      var md = state.modelDepth;
+      var d = CD.resampleGray(md.data, md.w, md.h, fw, fh);
+      var dm = CD.Matte.fromDepth(d, n, p.maskDepthBias || 0);
+      var dq = CD.Matte.quality(dm, n);
+      state.matte = dq;
+      if (dq.usable || src === 'depth') { state.maskFrom = 'depth'; return dm; }
+    }
+
+    if (alpha && (src === 'auto' || src === 'alpha')) {
+      state.maskFrom = 'alpha';
+      return alpha;
+    }
+    return null;                       // fall through to the brightness cutoff
+  }
+
+  function rasterise(canvas, fw, fh) {
+    var c = document.createElement('canvas');
+    c.width = fw; c.height = fh;
+    var g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(canvas, 0, 0, fw, fh);
+    return g.getImageData(0, 0, fw, fh).data;
   }
 
   /* Fingerprint and interaction do not read the picture's tones for depth —
@@ -569,7 +650,8 @@ var CD = window.CD || {};
     e.textContent = state.lines.length.toLocaleString() + ' contours · ' +
       state.dots.length.toLocaleString() + ' dots · ' +
       Math.round(state.timing[quality] || 0) + ' ms' +
-      (state.hasAlpha && state.params.useAlpha !== false ? ' · alpha silhouette' : '') +
+      ' · subject from ' + state.maskFrom +
+      (state.matte && !state.matte.usable ? ' (unreliable)' : '') +
       (state.params.autoTune && state.auto
         ? ' · auto: noise ' + state.auto._noise.toFixed(3) +
           ', range ' + state.auto._range.toFixed(2) +
@@ -644,6 +726,13 @@ var CD = window.CD || {};
     });
 
     $('#download').addEventListener('click', downloadBundle);
+
+    var backInput = $('#backplateInput');
+    $('#loadBackplate').addEventListener('click', function () { backInput.click(); });
+    backInput.addEventListener('change', function () {
+      if (backInput.files && backInput.files[0]) loadBackplate(backInput.files[0]);
+      backInput.value = '';
+    });
 
 
 

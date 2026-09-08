@@ -134,6 +134,56 @@ curves of the silhouette — which is what makes the rings belong to the subject
 rather than halftone whatever is behind it. **Grid ↔ form** still applies:
 Background at 1 gives the fingerprint rings, at 0 a straight grid.
 
+## Telling the subject from the background
+
+This is the part that decides whether the modes mean anything, and a
+brightness cutoff cannot do it on a real photograph. It draws one line through
+the tones and calls one side "subject", which only works if the subject is
+entirely brighter, or entirely darker, than the ground. A portrait against a
+mid-grey wall is neither: the lit cheek is brighter than the wall and the hair
+and the shirt are darker, so the subject sits on **both sides** of it.
+
+Measured on exactly that plate, across every cutoff available:
+
+| cutoff | agreement with the true subject |
+|---|---|
+| the best value anywhere (0.02) | **42%**, and only by swallowing the whole background |
+| low enough to exclude the background (0.36) | misses **93% of the person** |
+| separating on **depth** instead | **100%** |
+| separating on a **background plate** | **88%**, with **0%** background bleed |
+
+There is no good cutoff. That is why Edge was tracing the light-and-shadow
+line across a face rather than the outline of the person, and why Background
+was dotting the face: the outline it was given was not the person's.
+
+**Subject from** picks the reading, and Auto takes the best one available:
+
+- **Plate** — a second exposure of the empty set. The subject is wherever the
+  two frames differ, measured in RGB rather than luminance so a subject that
+  differs only in hue still separates. Exact, free, offline, and the right
+  answer whenever the set can be photographed on its own. Robust to noise
+  between the two frames: still 76% agreement with heavy grain on both.
+- **Depth** — the subject is the near part. Works from one frame and ignores
+  tone entirely. Needs the depth model. The near/far split is found by Otsu on
+  the depth histogram rather than asked for, because a depth of 0.43 is not a
+  number anyone can judge.
+- **Alpha** — the file already carries its outline.
+- **Bright** — the fallback, kept because it needs nothing.
+
+The status bar names which one produced the outline, and says *(unreliable)*
+when the result is nearly all subject or nearly none — a matte like that is
+the tool failing quietly, and the modes should not be allowed to draw
+something meaningless from it.
+
+**Fill holes** closes gaps inside the subject where it happens to match the
+ground. It floods the background inwards from the frame edge and fills
+whatever the outside cannot reach, so it works at any size and cannot move the
+outline by construction. Morphology was the wrong tool and was tried first: a
+blur-based close only reaches a hole's rim, returning a sixty-pixel hole 13%
+filled at radius twelve, and radii large enough to reach the middle round off
+genuine concavities. The flood recovers 100% of an enclosed hole and moves the
+outline by zero pixels.
+
 ## Auto-tune: the controls that have a right answer
 
 Roughly a third of the panel was never aesthetic. Polarity, where the
@@ -696,6 +746,7 @@ js/svgexport.js       vector export
 js/depthmodel.js      Depth Anything V2 in the browser (transformers.js)
 js/presets.js         the three modes; look parameters only
 js/auto.js            reads the plate; image parameters only
+js/matte.js           telling subject from background: plate, depth, alpha
 js/zip.js             tiny stored-entry zip writer, for Download
 js/ui.js              declarative control schema + panel
 js/app.js             p5 sketch, pipeline orchestration, I/O

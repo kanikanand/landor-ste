@@ -347,3 +347,8 @@ input.color { height: 20px; padding: 0; border: 0; background: none; }
 .brand h1 { font-size: 14px; margin: 0; }
 .io { margin-bottom: 6px; }
 .io button { padding: 8px 10px; }
+
+/* Button rows (Region, Subject from) were the tallest rows in the panel. */
+.shape-row { gap: 4px; margin-top: 2px; }
+.shape-row .shape-btn { padding: 3px 6px; font-size: 11px; }
+.ctrl > label { margin-bottom: 0; }

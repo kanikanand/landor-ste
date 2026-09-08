@@ -172,6 +172,43 @@ var CD = window.CD || {};
       for (i = 0; i < n; i++) m[i] = smoothstep(0.42, 0.58, vd[i]);
     }
 
+    /* Close holes, by asking which background is reachable from outside.
+     *
+     * Any way of finding a subject leaves gaps where the subject happens to
+     * match the ground — a difference matte cannot see the part of a cheek
+     * that lands on the backdrop's own tone. Those gaps are interior, and a
+     * subject is very nearly always one solid piece, so filling them is safe
+     * in a way that growing the outline is not.
+     *
+     * Morphology is the wrong tool here: closing with a blur only reaches a
+     * hole's rim, so a sixty-pixel hole came back 13% filled at a radius of
+     * twelve, and radii large enough to reach the middle round off genuine
+     * concavities. Flooding the background inwards from the frame edge is
+     * exact instead, at any size, and it cannot move the outline by
+     * construction — it only ever fills what the outside cannot reach. */
+    if (p.maskFillHoles) {
+      var seen = new Uint8Array(n);
+      var stack = [];
+      var px2, py2;
+      for (px2 = 0; px2 < w; px2++) {
+        stack.push(px2, 0); stack.push(px2, h - 1);
+      }
+      for (py2 = 0; py2 < h; py2++) {
+        stack.push(0, py2); stack.push(w - 1, py2);
+      }
+      while (stack.length) {
+        var yy = stack.pop(), xx = stack.pop();
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        var idx = yy * w + xx;
+        if (seen[idx] || m[idx] > 0.5) continue;    // subject blocks the flood
+        seen[idx] = 1;
+        stack.push(xx - 1, yy); stack.push(xx + 1, yy);
+        stack.push(xx, yy - 1); stack.push(xx, yy + 1);
+      }
+      /* background the outside never reached is a hole in the subject */
+      for (i = 0; i < n; i++) if (!seen[i] && m[i] <= 0.5) m[i] = 1;
+    }
+
     /* feather the mask edge slightly so contours die out instead of snapping */
     mask.blur(1, 1);
 

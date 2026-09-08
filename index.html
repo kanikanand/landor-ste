@@ -16,6 +16,7 @@
 
   <div class="io">
     <button id="loadImage" class="primary">Load image</button>
+    <button id="loadBackplate">Background plate</button>
     <button id="download" class="download">Download</button>
   </div>
 
@@ -33,6 +34,7 @@
 </main>
 
 <input type="file" id="imageInput" accept="image/*" hidden>
+<input type="file" id="backplateInput" accept="image/*" hidden>
 <input type="file" id="shapeInput" accept=".svg,image/svg+xml" hidden>
 
 <!-- p5.js is vendored so the tool runs offline and straight off the filesystem.
@@ -48,6 +50,7 @@
 <script src="js/streamlines.js"></script>
 <script src="js/shapes.js"></script>
 <script src="js/dots.js"></script>
+<script src="js/matte.js"></script>
 <script src="js/zip.js"></script>
 <script src="js/svgexport.js"></script>
 <script src="js/depthmodel.js"></script>

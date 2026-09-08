@@ -46,13 +46,20 @@ var CD = window.CD || {};
           stage: 'depth',
           help: 'Separates light from dark. More contrast means the dots swing ' +
                 'harder between their near and far look.' },
+        { key: 'maskSource', label: 'Subject from', type: 'source', def: 'auto',
+          stage: 'depth',
+          help: 'How the subject is told apart from the background. Brightness ' +
+                'draws one line through the tones, so it cannot separate a ' +
+                'subject that is partly brighter and partly darker than the ' +
+                'background — a lit face with dark hair against a grey wall. ' +
+                'Load a frame of the empty set and Plate is exact.' },
+      ],
+      more: [
         { key: 'maskThreshold', label: 'Cutoff', min: 0, max: 0.95, step: 0.01,
           def: 0.06, stage: 'depth',
           help: 'How dark something can be and still count as the subject rather ' +
                 'than the background. Raise it if the background is picking up ' +
-                'dots; lower it if parts of the subject are being missed.' }
-      ],
-      more: [
+                'dots; lower it if parts of the subject are being missed.' },
         { key: 'invert', label: 'Invert', type: 'toggle',
           def: false, stage: 'depth',
           help: 'Flips which end reads as near. Nothing else behaves until this ' +
@@ -62,6 +69,20 @@ var CD = window.CD || {};
           help: 'More treats fine detail as noise and gives long, calm lines. ' +
                 'Less keeps panel edges and creases, at the risk of the lines ' +
                 'breaking up on a rough photo.' },
+        { key: 'maskTolerance', label: 'Plate tolerance', min: 0.01, max: 0.5,
+          step: 0.005, def: 0.06, stage: 'depth',
+          help: 'How much two frames of the same set may differ and still count ' +
+                'as the same. Raise it if the background is picking up dots; ' +
+                'lower it if parts of the subject are being missed.' },
+        { key: 'maskDepthBias', label: 'Depth split', min: -0.4, max: 0.4,
+          step: 0.01, def: 0, stage: 'depth',
+          help: 'Nudges where near stops and far starts, when the subject is ' +
+                'being separated by depth.' },
+        { key: 'maskFillHoles', label: 'Fill holes', type: 'toggle', def: true,
+          stage: 'depth',
+          help: 'Fills gaps inside the subject where it happens to match the ' +
+                'background. Only fills what is fully enclosed, so the outline ' +
+                'itself never moves.' },
         { key: 'maskDespeckle', label: 'Despeckle', min: 0, max: 8, step: 1,
           def: 2, stage: 'depth',
           help: 'Fills specks and holes in the subject’s edge. Raise it on a ' +
@@ -370,6 +391,27 @@ var CD = window.CD || {};
           addRef(refs, c.key, { set: function (v) {
             mwrap.querySelectorAll('.shape-btn').forEach(function (o) {
               o.classList.toggle('on', o.dataset.mode === v);
+            });
+          } });
+
+        } else if (c.type === 'source') {
+          row.appendChild(el('label', null, c.label));
+          var swrap = el('div', 'shape-row');
+          [['Auto', 'auto'], ['Plate', 'backplate'], ['Depth', 'depth'],
+           ['Bright', 'brightness']].forEach(function (pair) {
+            var sb = el('button', 'shape-btn', pair[0]);
+            sb.dataset.source = pair[1];
+            sb.addEventListener('click', function () {
+              params[c.key] = pair[1];
+              onChange(c.stage, c.key);
+            });
+            if (params[c.key] === pair[1]) sb.classList.add('on');
+            swrap.appendChild(sb);
+          });
+          row.appendChild(swrap);
+          addRef(refs, c.key, { set: function (v) {
+            swrap.querySelectorAll('.shape-btn').forEach(function (o) {
+              o.classList.toggle('on', o.dataset.source === v);
             });
           } });
 
