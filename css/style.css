@@ -290,11 +290,9 @@ input[type=color] {
 .slider { height: 16px; }
 .ctrl-toggle { font-size: 12px; }
 
-/* Help is reference, not running commentary: it appears on hover or while a
-   control has focus, and otherwise stays out of the way. */
-.ctrl .help { display: none; font-size: 11px; margin: 4px 0 0; opacity: 0.65; }
-.ctrl:hover .help,
-.ctrl:focus-within .help { display: block; }
+/* No help text in the layout at all. It lives in each row's tooltip, so the
+   panel is the same height whatever you are pointing at. */
+.ctrl .help { display: none; }
 
 .io { display: flex; gap: 8px; }
 .io button { flex: 1 1 0; }

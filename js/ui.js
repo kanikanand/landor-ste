@@ -367,14 +367,10 @@ var CD = window.CD || {};
             mwrap.appendChild(mb);
           });
           row.appendChild(mwrap);
-          var modeHint = el('p', 'help', CD.Presets.MODES[params[c.key]] ?
-            CD.Presets.MODES[params[c.key]].hint : '');
-          row.appendChild(modeHint);
           addRef(refs, c.key, { set: function (v) {
             mwrap.querySelectorAll('.shape-btn').forEach(function (o) {
               o.classList.toggle('on', o.dataset.mode === v);
             });
-            if (CD.Presets.MODES[v]) modeHint.textContent = CD.Presets.MODES[v].hint;
           } });
 
         } else if (c.type === 'shape') {
@@ -444,7 +440,13 @@ var CD = window.CD || {};
           });
         }
 
-        if (c.help) row.appendChild(el('p', 'help', c.help));
+        /* The explanation goes in the tooltip, not into the layout. Rendering
+         * it inline under every row doubled the panel's height; revealing it
+         * on hover was worse, because the panel then shifted under the cursor
+         * every time a control was touched — you would reach for a slider and
+         * the row would move. A title attribute costs no space and never
+         * reflows. */
+        if (c.help) row.title = c.label + ' — ' + c.help;
         into.appendChild(row);
       };
 
