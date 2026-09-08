@@ -216,89 +216,6 @@ var CD = window.CD || {};
     return dots;
   }
 
-  /* --------------------------------------------------------------------------
-   * Grid fill
-   *
-   * The other way to fill a region: a regular lattice rather than dots strung
-   * along contours. Rows read as a halftone where the surface is broad and
-   * flat — the side of a hull, a panel — where contour bands have little to
-   * follow and start to wander. Everything else is shared with the contour
-   * fill: size, colour and relief come from depth, rotation from flow, so the
-   * two modes sit in the same picture without disagreeing.
-   *
-   * Rows are offset half a step on alternate lines, which packs the lattice
-   * hexagonally instead of leaving the aisles a square grid shows.
-   * ------------------------------------------------------------------------*/
-  function buildGridDots(ctx) {
-    var depth = ctx.depth, grad = ctx.grad, mask = ctx.mask, flow = ctx.flow;
-    var tone = ctx.tone, relief = ctx.relief;
-    var s = ctx.fieldScale;
-    var p = ctx.params;
-    var rng = ctx.rng;
-
-    var dots = [];
-    var jitter = p.randomness;
-    var step = Math.max(1.2, p.dotSpacing);
-    var rowStep = step * 0.866;                 // hexagonal packing
-    var gate = gateFor(p.edgeDissolve);
-    var minSize = minSizeFor(p);
-    var maxDots = p.maxDots;
-
-    /* The lattice runs at the base angle, so it lines up with the contour
-     * fill's fallback direction rather than always sitting axis-aligned. */
-    var a = (p.flowAngle || 0) * Math.PI / 180;
-    var ca = Math.cos(a), sa = Math.sin(a);
-
-    /* Cover the rotated bounding box of the view, so no corner is missed. */
-    var w = ctx.viewW, h = ctx.viewH;
-    var reach = Math.ceil(Math.hypot(w, h) * 0.5) + step;
-    var cx = w * 0.5, cy = h * 0.5;
-    var rows = Math.ceil((reach * 2) / rowStep);
-    var cols = Math.ceil((reach * 2) / step);
-
-    for (var r = 0; r <= rows && dots.length < maxDots; r++) {
-      var v = -reach + r * rowStep;
-      var rowShift = (r & 1) ? step * 0.5 : 0;
-
-      for (var c = 0; c <= cols; c++) {
-        var u = -reach + c * step + rowShift;
-
-        /* lattice space -> view space */
-        var x = cx + u * ca - v * sa;
-        var y = cy + u * sa + v * ca;
-        if (x < -step || y < -step || x > w + step || y > h + step) continue;
-
-        var fx = x * s, fy = y * s;
-        var m = mask.sample(fx, fy, 0);
-        if (m <= gate) continue;
-
-        var d = depth.sample(fx, fy, 0);
-        var ch = channels(d, tone ? tone.sample(fx, fy, 0) : undefined, p);
-        var vary = 1 + (rng() - 0.5) * 2 * p.sizeVariation;
-        var size = dissolveSize(p.dotSize * ch.scale * vary, m, p.edgeDissolve, gate);
-        if (size <= minSize) continue;
-        if (ch.a < 0.02) continue;   // invisible; not worth exporting either
-
-        var dir = CD.dirAt(flow, fx, fy);
-        var rot = Math.atan2(dir.y, dir.x) + (rng() - 0.5) * 2 * jitter * 0.9;
-
-        var px = x, py = y;
-        if (p.depthExaggeration > 0.001 && relief) {
-          px += relief.sample(fx, fy, 0) * p.depthExaggeration;
-          py += relief.sample(fx, fy, 1) * p.depthExaggeration;
-        }
-        if (jitter > 0) {
-          px += (rng() - 0.5) * 2 * jitter * step * 0.5;
-          py += (rng() - 0.5) * 2 * jitter * step * 0.5;
-        }
-
-        dots.push({ x: px, y: py, s: size, r: rot, d: d, c: ch.c, a: ch.a });
-        if (dots.length >= maxDots) break;
-      }
-    }
-
-    return dots;
-  }
 
   /* Canvas and SVG must bucket identically or the export stops matching what
    * you saw, so the scheme lives here and both call it. Colour keeps the old
@@ -346,7 +263,6 @@ var CD = window.CD || {};
   CD.gateFor = gateFor;
   CD.channels = channels;
   CD.buildDots = buildDots;
-  CD.buildGridDots = buildGridDots;
   CD.makeRamp = makeRamp;
   CD.hexToRgb = hexToRgb;
   CD.rgbToHex = rgbToHex;

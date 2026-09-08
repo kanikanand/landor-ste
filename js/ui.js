@@ -38,15 +38,15 @@ var CD = window.CD || {};
           stage: 'depth',
           help: 'Reads the picture and sets brightness, contrast, the subject cutoff ' +
                 'and how much grain to ignore. Turn it off to set them by hand.' },
-        { key: 'exposure', label: 'Brightness', min: -0.45, max: 0.45, step: 0.01, def: 0,
+        { key: 'exposure', modes: ['full'], label: 'Brightness', min: -0.45, max: 0.45, step: 0.01, def: 0,
           stage: 'depth',
           help: 'Lifts or lowers the whole picture before anything else reads it. ' +
                 'Use it when the subject sits too dark or too bright to separate.' },
-        { key: 'imageContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35,
+        { key: 'imageContrast', modes: ['full'], label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35,
           stage: 'depth',
           help: 'Separates light from dark. More contrast means the dots swing ' +
                 'harder between their near and far look.' },
-        { key: 'maskSource', label: 'Subject from', type: 'source', def: 'auto',
+        { key: 'maskSource', modes: ['background', 'edge'], label: 'Subject from', type: 'source', def: 'auto',
           stage: 'depth',
           help: 'How the subject is told apart from the background. Brightness ' +
                 'draws one line through the tones, so it cannot separate a ' +
@@ -56,56 +56,52 @@ var CD = window.CD || {};
                 'nothing but a download; a transparent PNG is used automatically.' },
       ],
       more: [
-        { key: 'maskThreshold', label: 'Cutoff', min: 0, max: 0.95, step: 0.01,
+        { key: 'maskThreshold', modes: ['background', 'edge'], label: 'Cutoff', min: 0, max: 0.95, step: 0.01,
           def: 0.06, stage: 'depth',
           help: 'How dark something can be and still count as the subject rather ' +
                 'than the background. Raise it if the background is picking up ' +
                 'dots; lower it if parts of the subject are being missed.' },
-        { key: 'invert', label: 'Invert', type: 'toggle',
+        { key: 'invert', modes: ['full'], label: 'Invert', type: 'toggle',
           def: false, stage: 'depth',
           help: 'Flips which end reads as near. Nothing else behaves until this ' +
                 'is right.' },
-        { key: 'depthSmoothing', label: 'Smoothing', min: 0, max: 30, step: 1,
+        { key: 'depthSmoothing', modes: ['full'], label: 'Smoothing', min: 0, max: 30, step: 1,
           def: 10, stage: 'depth',
           help: 'More treats fine detail as noise and gives long, calm lines. ' +
                 'Less keeps panel edges and creases, at the risk of the lines ' +
                 'breaking up on a rough photo.' },
-        { key: 'maskTolerance', label: 'Plate tolerance', min: 0.01, max: 0.5,
+        { key: 'maskTolerance', modes: ['background', 'edge'], label: 'Plate tolerance', min: 0.01, max: 0.5,
           step: 0.005, def: 0.06, stage: 'depth',
           help: 'How much two frames of the same set may differ and still count ' +
                 'as the same. Raise it if the background is picking up dots; ' +
                 'lower it if parts of the subject are being missed.' },
-        { key: 'maskDepthBias', label: 'Depth split', min: -0.4, max: 0.4,
+        { key: 'maskDepthBias', modes: ['background', 'edge'], label: 'Depth split', min: -0.4, max: 0.4,
           step: 0.01, def: 0, stage: 'depth',
           help: 'Nudges where near stops and far starts, when the subject is ' +
                 'being separated by depth.' },
-        { key: 'maskFillHoles', label: 'Fill holes', type: 'toggle', def: true,
+        { key: 'maskFillHoles', modes: ['background', 'edge'], label: 'Fill holes', type: 'toggle', def: true,
           stage: 'depth',
           help: 'Fills gaps inside the subject where it happens to match the ' +
                 'background. Only fills what is fully enclosed, so the outline ' +
                 'itself never moves.' },
-        { key: 'maskDespeckle', label: 'Despeckle', min: 0, max: 8, step: 1,
+        { key: 'maskDespeckle', modes: ['background', 'edge'], label: 'Despeckle', min: 0, max: 8, step: 1,
           def: 2, stage: 'depth',
           help: 'Fills specks and holes in the subject’s edge. Raise it on a ' +
                 'grainy or heavily compressed picture; it is what stops the lines ' +
                 'shattering into short fragments.' },
-        { key: 'maskSmoothing', label: 'Soften edge', min: 0, max: 8, step: 1,
-          def: 1, stage: 'depth',
-          help: 'Blurs the edge of the subject. Keep it low — this is the one ' +
-                'control that can push the outline off the subject.' },
-        { key: 'depthContrast', label: 'Depth range', min: 0.2, max: 4, step: 0.05,
+        { key: 'depthContrast', modes: ['full'], label: 'Depth range', min: 0.2, max: 4, step: 0.05,
           def: 1.6, stage: 'depth',
           help: 'Pushes near and far further apart, so the form reads more ' +
                 'strongly through the dots.' },
-        { key: 'threshold', label: 'Shadow floor', min: 0, max: 0.95, step: 0.01,
+        { key: 'threshold', modes: ['full'], label: 'Shadow floor', min: 0, max: 0.95, step: 0.01,
           def: 0.13, stage: 'depth',
           help: 'Everything below this reads as fully far. Raise it to stop dark ' +
                 'areas carrying any modelling.' },
-        { key: 'useAlpha', label: 'Use alpha', type: 'toggle',
+        { key: 'useAlpha', modes: ['background', 'edge'], label: 'Use alpha', type: 'toggle',
           def: true, stage: 'depth',
           help: 'A transparent PNG already knows its own outline exactly, ' +
                 'including parts too dark to find any other way.' },
-        { key: 'cutoutModel', label: 'Cut out subject', type: 'toggle', def: false,
+        { key: 'cutoutModel', modes: ['background', 'edge'], label: 'Cut out subject', type: 'toggle', def: false,
           stage: 'depth',
           help: 'Runs a matting model in the page to find the subject — the same ' +
                 'kind of model rembg uses on the desktop, so a transparent PNG ' +
@@ -154,7 +150,7 @@ var CD = window.CD || {};
           def: 0, stage: 'draw',
           help: 'Sinks the whole picture towards the background colour, so the ' +
                 'dots carry more of it.' },
-        { key: 'edgeBand', label: 'Band width', min: 4, max: 60, step: 1, def: 12,
+        { key: 'edgeBand', modes: ['background', 'edge'], label: 'Band width', min: 4, max: 60, step: 1, def: 12,
           stage: 'region',
           help: 'How far the pattern reaches either side of the outline. Only ' +
                 'used by Background and Edge.' }
@@ -169,7 +165,7 @@ var CD = window.CD || {};
           stage: 'dots' },
         { key: 'dotSpacing', label: 'Gap', min: 1.5, max: 40, step: 0.25,
           def: 4, stage: 'dots' },
-        { key: 'flowStrength', label: 'Grid ↔ follows the form', min: 0, max: 1,
+        { key: 'flowStrength', label: 'Grid ↔ form', min: 0, max: 1,
           step: 0.01, def: 0.9, stage: 'flow',
           help: 'At 0 the rows run straight and the dots read as a grid. At 1 ' +
                 'they wrap around the form. Everything in between is a mix.' },
@@ -194,8 +190,6 @@ var CD = window.CD || {};
           step: 1, def: 6, stage: 'flow',
           help: 'Spreads the direction of the form into flat areas. Low values ' +
                 'let those areas fall back to the grid angle.' },
-        { key: 'lineDensity', label: 'Row density', min: 0.2, max: 4, step: 0.05, def: 1,
-          stage: 'lines' },
         { key: 'sizeVariation', label: 'Size varies', min: 0, max: 1, step: 0.01,
           def: 0.12, stage: 'dots',
           help: 'Random spread in dot size, for texture.' },
@@ -210,22 +204,14 @@ var CD = window.CD || {};
           stage: 'flow',
           help: 'Bends the rows with slow noise so they breathe instead of ' +
                 'reading like a survey map.' },
-        { key: 'depthExaggeration', label: 'Relief', min: 0, max: 30,
+        { key: 'depthExaggeration', modes: ['full'], label: 'Relief', min: 0, max: 30,
           step: 0.1, def: 2, stage: 'dots',
           help: 'Shifts dots outwards where the surface bulges towards you, so ' +
                 'the rows read as relief rather than as a flat map.' },
-        { key: 'reliefCoherence', label: 'Relief smoothing', min: 0, max: 24,
+        { key: 'reliefCoherence', modes: ['full'], label: 'Relief smoothing', min: 0, max: 24,
           step: 1, def: 10, stage: 'depth',
           help: 'Neighbouring dots move together. Low values let them move ' +
                 'differently and tear the rows apart.' },
-        { key: 'sizeFalloff', label: 'Falloff curve', min: 0.3, max: 3.5, step: 0.05,
-          def: 1.35, stage: 'dots',
-          help: 'How quickly dots shrink as the surface turns away.' },
-        { key: 'gridFill', label: 'Flat lattice', type: 'toggle',
-          def: false, stage: 'dots',
-          help: 'Drops the flowing rows entirely for an even lattice. The Grid ' +
-                'end of the slider above usually reads better, because it still ' +
-                'knows where the form is.' }
       ]
     },
 
@@ -250,8 +236,6 @@ var CD = window.CD || {};
       more: [
         { key: 'colorFar', label: 'Far', type: 'color', def: '#4a0410', stage: 'draw',
           help: 'What the dots fade towards as the surface recedes.' },
-        { key: 'colorGamma', label: 'Falloff', min: 0.3, max: 3, step: 0.05, def: 1,
-          stage: 'draw' },
         { key: 'fadeDepth', label: 'Fade', min: 0, max: 1, step: 0.01, def: 0,
           stage: 'dots',
           help: 'Far dots go transparent. Easily overdone.' },
@@ -326,8 +310,19 @@ var CD = window.CD || {};
     root.innerHTML = '';
     var refs = {};
 
+    /* A control that cannot do anything in the current mode is worse than a
+     * missing one: it invites a change that has no effect, and quietly teaches
+     * that the panel is not to be trusted. Background and Edge read nothing
+     * from the picture except the line between subject and ground — their
+     * depth is distance to that outline — so every tonal control is noise in
+     * them; and every separation control is noise in Full, which covers the
+     * whole frame and so has no outside to find. */
+    var rowModes = [];
+    var sections = [];
+
     SCHEMA.forEach(function (g) {
       var sec = el('section', 'group');
+      sections.push({ sec: sec, group: g });
       var head = el('div', 'group-head');
       head.appendChild(el('h2', null, g.group));
       if (g.hint) head.appendChild(el('p', 'hint', g.hint));
@@ -351,6 +346,7 @@ var CD = window.CD || {};
 
       var render = function (c, into) {
         var row = el('div', 'ctrl');
+        if (c.modes) rowModes.push({ row: row, modes: c.modes });
 
         if (c.type === 'toggle') {
           var lab = el('label', 'ctrl-toggle');
@@ -509,8 +505,33 @@ var CD = window.CD || {};
       root.appendChild(sec);
     });
 
+    /* Show only what the current mode can act on, and hide a section entirely
+     * when nothing in it survives. */
+    function applyModeVisibility(mode) {
+      rowModes.forEach(function (r) {
+        r.row.hidden = r.modes.indexOf(mode) === -1;
+      });
+      sections.forEach(function (x) {
+        /* a More button with nothing behind it is a promise the panel cannot
+         * keep, so it goes too */
+        if (x.group._body) {
+          var inner = x.group._body.querySelectorAll('.ctrl');
+          var some = false;
+          for (var j = 0; j < inner.length; j++) if (!inner[j].hidden) { some = true; break; }
+          x.group._toggle.hidden = !some;
+          if (!some) x.group._body.hidden = true;
+        }
+        var rows = x.sec.querySelectorAll('.ctrl');
+        var any = false;
+        for (var i = 0; i < rows.length; i++) if (!rows[i].hidden) { any = true; break; }
+        x.sec.hidden = !any;
+      });
+    }
+    applyModeVisibility(params.mode);
+
     return {
       refs: refs,
+      modeChanged: applyModeVisibility,
       set: function (key, v) { setRef(refs, key, v); },
       call: function (key, fn) {
         (refs[key] || []).forEach(function (r) { if (r[fn]) r[fn].apply(null, [].slice.call(arguments, 2)); });
@@ -539,15 +560,20 @@ var CD = window.CD || {};
       out.push('');
     }
     SCHEMA.forEach(function (g) {
+      var before = out.length;
       out.push(g.group.toUpperCase());
       eachControl(g, function (c) {
         if (c.type === 'mode') return;
+        /* a control the mode cannot act on is not part of what made this
+         * render, so it is not part of the record either */
+        if (c.modes && c.modes.indexOf(params.mode) === -1) return;
         var v = params[c.key];
         if (v === undefined) return;
         if (typeof v === 'number' && c.step && c.step < 1) v = v.toFixed(2);
         out.push('  ' + c.label + ': ' + v);
       });
-      out.push('');
+      if (out.length === before + 1) out.length = before;   // nothing applied
+      else out.push('');
     });
     if (auto) {
       out.push('WHAT AUTO-ADJUST READ FROM THE IMAGE');

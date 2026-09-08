@@ -45,8 +45,8 @@ Four questions, in the order you actually answer them:
 | **Look** | colour, and what changes from near to far |
 
 Each section shows the three to five controls that matter and folds the rest
-behind a **More** button belonging to that section. Sixteen controls up front,
-thirty-three folded — and the detail sits with the thing it details, so
+behind a **More** button belonging to that section. Fourteen or fifteen
+controls up front depending on mode, the rest folded — and the detail sits with the thing it details, so
 wondering about scatter while you are in Pattern is one click, not a hunt
 through one long pile at the bottom.
 
@@ -93,6 +93,39 @@ fourth thing to learn that produced a stiffer result than turning this slider
 down, because it threw away any knowledge of where the subject was. It is
 still there under Pattern → More for the cases where a truly flat lattice is
 wanted.
+
+## Only what the mode can act on
+
+The three modes do not need the same controls, and showing the ones they
+cannot use is worse than hiding them: it invites a change that has no effect,
+and quietly teaches that the panel is not to be trusted.
+
+**Full** covers the whole frame, so it has no outside to find and needs no
+subject separation at all. What it does need is the tonal reading, because
+that is where its depth comes from.
+
+**Background** and **Edge** are the mirror image. Their only job on the image
+is the line between subject and ground, and their depth is distance to that
+outline, not the picture's tones — so brightness, contrast, depth range, the
+shadow floor and the relief controls do nothing in them whatsoever.
+
+So the panel shows one set or the other:
+
+| | Full | Background · Edge |
+|---|---|---|
+| Image | Brightness, Contrast, and the depth reading behind More | **Subject from**, and how it is refined |
+| everything else | the same | the same |
+
+Fifteen controls in Full, fourteen in Background and Edge, and every one of
+them does something. A section with nothing left to show hides, and so does a
+**More** button with nothing behind it. The settings file records only what
+applied, for the same reason.
+
+Five controls went entirely rather than being hidden — Soften edge, Size
+falloff, Row density, Flat lattice and Colour falloff. Each either duplicated
+a neighbour or was a second-order curve on a control that already had a
+strength, and the lattice fill was the last of the grid mode: **Grid ↔ form**
+at 0 does it better, because it still knows where the subject is.
 
 ## Modes, and why there are only three
 

@@ -362,7 +362,7 @@ var CD = window.CD || {};
       params: p,
       rng: CD.makeRng(p.seed ^ 0x9e3779b9)
     };
-    state.dots = p.gridFill ? CD.buildGridDots(args) : CD.buildDots(args);
+    state.dots = CD.buildDots(args);
   }
 
   function stageDraw() {
@@ -520,7 +520,7 @@ var CD = window.CD || {};
    * sets are disjoint, so this never disturbs the calibration. */
   function applyMode() {
     CD.Presets.applyMode(state.params, state.params.mode);
-    if (ui) ui.syncAll();
+    if (ui) { ui.syncAll(); ui.modeChanged(state.params.mode); }
   }
 
   /* ==========================================================================
