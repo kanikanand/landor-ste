@@ -27,6 +27,7 @@ var CD = window.CD || {};
   var LIB_URL = window.CD_TRANSFORMERS_URL ||
     'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0';
   var MODEL_ID = window.CD_DEPTH_MODEL || 'onnx-community/depth-anything-v2-small';
+  var MATTE_ID = window.CD_MATTE_MODEL || 'Xenova/modnet';
 
   /* Long side of the image handed to the model. The processor resizes to its
    * own input size anyway, and the analysis grid downstream is 420 px, so
@@ -225,16 +226,105 @@ var CD = window.CD || {};
     });
   }
 
-  /* Drop the loaded model. The library stays imported — it is the model
-   * weights that are worth several tens of megabytes, not the code. */
+  /* --------------------------------------------------------------------------
+   * Cutting the subject out
+   *
+   * The same library, a different head. rembg on the desktop and this are the
+   * same family of matting models — U-2-Net and its descendants — so a
+   * transparent PNG made by rembg and a matte made here are interchangeable.
+   * Running it in the page just means the Python step is optional rather than
+   * required, and the tool keeps working for anyone who cannot install it.
+   *
+   * This is the best silhouette available for a photograph that has no empty
+   * plate to difference against: unlike brightness it does not care that the
+   * lit cheek is brighter than the wall and the hair is darker, because it was
+   * trained to find people rather than to find a tone.
+   * ------------------------------------------------------------------------*/
+
+  var cutoutPromise = null;
+  var cutoutBackend = null;
+
+  function getCutout(onProgress) {
+    if (cutoutPromise) return cutoutPromise;
+
+    cutoutPromise = loadLib().then(function (mod) {
+      var tried = backendCandidates();
+
+      function attempt(i) {
+        if (i >= tried.length) {
+          throw new Error('No usable backend for ' + MATTE_ID);
+        }
+        var cfg = tried[i];
+        return mod.pipeline('background-removal', MATTE_ID, {
+          device: cfg.device,
+          dtype: cfg.dtype,
+          progress_callback: function (info) { report(info, cfg, onProgress); }
+        }).then(function (seg) {
+          cutoutBackend = cfg;
+          return seg;
+        }).catch(function (e) {
+          console.warn('cutout: ' + cfg.device + '/' + cfg.dtype +
+                       ' unavailable —', e.message);
+          return attempt(i + 1);
+        });
+      }
+      return attempt(0);
+    }).catch(function (e) {
+      cutoutPromise = null;
+      throw e;
+    });
+
+    return cutoutPromise;
+  }
+
+  /* Resolves { data: Float32Array coverage 0..1, w, h, ms, backend }. */
+  function cutout(srcCanvas, onProgress) {
+    var reason = unavailableReason();
+    if (reason) return Promise.reject(new Error(reason));
+
+    return getCutout(onProgress).then(function (seg) {
+      if (onProgress) {
+        onProgress({ phase: 'infer', pct: 100,
+                     backend: describeBackend(cutoutBackend) });
+      }
+      var t0 = performance.now();
+      return seg(inputCanvas(srcCanvas)).then(function (out) {
+        var img = Array.isArray(out) ? out[0] : out;
+        if (!img || !img.data) throw new Error('Cut-out returned nothing usable.');
+
+        /* The pipeline hands back the picture with an alpha channel put on
+         * it; the alpha is the matte and the colour is not wanted here. */
+        var w = img.width, h = img.height, ch = img.channels || 4;
+        var n = w * h;
+        var a = new Float32Array(n);
+        if (ch >= 4) {
+          for (var i = 0; i < n; i++) a[i] = img.data[i * ch + 3] / 255;
+        } else {
+          for (var j = 0; j < n; j++) a[j] = img.data[j * ch] / 255;
+        }
+        return {
+          data: a, w: w, h: h,
+          ms: performance.now() - t0,
+          backend: describeBackend(cutoutBackend)
+        };
+      });
+    });
+  }
+
+  /* Drop the loaded models. The library stays imported — it is the weights
+   * that are worth several tens of megabytes, not the code. */
   function unload() {
     estimatorPromise = null;
+    cutoutPromise = null;
     backend = null;
+    cutoutBackend = null;
   }
 
   CD.DepthModel = {
     MODEL_ID: MODEL_ID,
+    MATTE_ID: MATTE_ID,
     estimate: estimate,
+    cutout: cutout,
     unload: unload,
     unavailableReason: unavailableReason,
     loaded: function () { return !!backend; },

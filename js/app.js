@@ -28,6 +28,7 @@ var CD = window.CD || {};
     backCanvas: null,    // the empty-set frame, when one has been loaded
     maskFrom: 'brightness',
     matte: null,
+    cutout: null,       // matte from the in-page model
     auto: null,          // what the tuner read off the plate
     modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
     modelBusy: false,
@@ -145,12 +146,15 @@ var CD = window.CD || {};
      * of the new one. */
     state.modelDepth = null;
     state.modelBusy = false;
+    state.cutout = null;
+    state.cutoutBusy = false;
     state.modelToken++;
 
     if (state.params.autoTune) runAuto();
 
     markDirty('depth');
     if (state.params.modelDepth) ensureModelDepth();
+    if (state.params.cutoutModel) ensureCutout();
   }
 
   /* The empty set, loaded as a second frame. Kept at the source's own size;
@@ -266,6 +270,17 @@ var CD = window.CD || {};
       var q = CD.Matte.quality(m, n);
       state.matte = q;
       if (q.usable || src === 'backplate') { state.maskFrom = 'backplate'; return m; }
+    }
+
+    /* A matting model, run in the page. The same family rembg uses on the
+     * desktop, so a transparent PNG made there and this are interchangeable —
+     * this route just means the Python step is optional. */
+    if ((src === 'auto' || src === 'cutout') && p.cutoutModel && state.cutout) {
+      var cm = state.cutout;
+      var cv = CD.resampleGray(cm.data, cm.w, cm.h, fw, fh);
+      var cq = CD.Matte.quality(cv, n);
+      state.matte = cq;
+      if (cq.usable || src === 'cutout') { state.maskFrom = 'cut-out'; return cv; }
     }
 
     /* The subject is the near part. Works from one frame and ignores tone. */
@@ -551,6 +566,46 @@ var CD = window.CD || {};
     });
   }
 
+  /* Same shape as the depth model: fetched only when asked, cached against
+   * the image, and failing loudly rather than silently. */
+  function ensureCutout() {
+    if (!state.srcCanvas || state.cutout || state.cutoutBusy) return;
+    if (!CD.DepthModel) { failCutout('Model module is missing.'); return; }
+    var reason = CD.DepthModel.unavailableReason();
+    if (reason) { failCutout(reason); return; }
+
+    var token = state.modelToken;
+    state.cutoutBusy = true;
+    status('Loading ' + CD.DepthModel.MATTE_ID + ' to cut the subject out…');
+
+    CD.DepthModel.cutout(state.srcCanvas, function (pr) {
+      if (token !== state.modelToken) return;
+      if (pr.phase === 'download') {
+        status('Downloading cut-out model — ' + Math.round(pr.pct) + '% · ' + pr.backend);
+      } else if (pr.phase === 'infer') {
+        status('Cutting the subject out on ' + pr.backend + '…');
+      }
+    }).then(function (res) {
+      if (token !== state.modelToken) return;
+      state.cutoutBusy = false;
+      state.cutout = res;
+      status('Subject cut out · ' + res.backend + ' · ' + Math.round(res.ms) + ' ms');
+      markDirty('depth');
+    }).catch(function (e) {
+      if (token !== state.modelToken) return;
+      state.cutoutBusy = false;
+      console.error(e);
+      failCutout(e.message);
+    });
+  }
+
+  function failCutout(msg) {
+    state.params.cutoutModel = false;
+    if (ui) ui.set('cutoutModel', false);
+    status(msg, true);
+    markDirty('depth');
+  }
+
   /* Drop back to luminance, with the control switched off and the reason
    * shown. Silently rendering the fallback would read as the model working
    * badly rather than as the model not being there. */
@@ -786,6 +841,12 @@ var CD = window.CD || {};
         /* Switching the model on is the one control that has to fetch
          * something before its stage can be rebuilt. */
         if (key === 'modelDepth' && state.params.modelDepth) ensureModelDepth();
+        if (key === 'cutoutModel' && state.params.cutoutModel) ensureCutout();
+        if (key === 'maskSource' && state.params.maskSource === 'cutout') {
+          state.params.cutoutModel = true;
+          ui.set('cutoutModel', true);
+          ensureCutout();
+        }
         if (key === 'mode') applyMode();
         if (key === 'autoTune' && state.params.autoTune) runAuto();
         markDirty(stage);

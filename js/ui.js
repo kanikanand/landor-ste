@@ -52,7 +52,8 @@ var CD = window.CD || {};
                 'draws one line through the tones, so it cannot separate a ' +
                 'subject that is partly brighter and partly darker than the ' +
                 'background — a lit face with dark hair against a grey wall. ' +
-                'Load a frame of the empty set and Plate is exact.' },
+                'Plate is exact if you can shoot the empty set; Cut out needs ' +
+                'nothing but a download; a transparent PNG is used automatically.' },
       ],
       more: [
         { key: 'maskThreshold', label: 'Cutoff', min: 0, max: 0.95, step: 0.01,
@@ -104,6 +105,12 @@ var CD = window.CD || {};
           def: true, stage: 'depth',
           help: 'A transparent PNG already knows its own outline exactly, ' +
                 'including parts too dark to find any other way.' },
+        { key: 'cutoutModel', label: 'Cut out subject', type: 'toggle', def: false,
+          stage: 'depth',
+          help: 'Runs a matting model in the page to find the subject — the same ' +
+                'kind of model rembg uses on the desktop, so a transparent PNG ' +
+                'made there works just as well and needs no download. First use ' +
+                'fetches the model; the page must be served over http.' },
         { key: 'modelDepth', label: 'AI depth',
           type: 'toggle', def: false, stage: 'depth',
           help: 'Works out the actual geometry instead of guessing from ' +
@@ -397,8 +404,8 @@ var CD = window.CD || {};
         } else if (c.type === 'source') {
           row.appendChild(el('label', null, c.label));
           var swrap = el('div', 'shape-row');
-          [['Auto', 'auto'], ['Plate', 'backplate'], ['Depth', 'depth'],
-           ['Bright', 'brightness']].forEach(function (pair) {
+          [['Auto', 'auto'], ['Plate', 'backplate'], ['Cut out', 'cutout'],
+           ['Depth', 'depth'], ['Bright', 'brightness']].forEach(function (pair) {
             var sb = el('button', 'shape-btn', pair[0]);
             sb.dataset.source = pair[1];
             sb.addEventListener('click', function () {

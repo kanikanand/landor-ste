@@ -167,7 +167,17 @@ was dotting the face: the outline it was given was not the person's.
   tone entirely. Needs the depth model. The near/far split is found by Otsu on
   the depth histogram rather than asked for, because a depth of 0.43 is not a
   number anyone can judge.
-- **Alpha** — the file already carries its outline.
+- **Cut out** — a matting model run in the page. The same family
+  [rembg](https://github.com/danielgatis/rembg) uses on the desktop, so a
+  transparent PNG made there and a matte made here are interchangeable; this
+  route only exists so the Python step is optional. Unlike brightness it does
+  not care that the lit cheek is brighter than the wall and the hair is
+  darker, because it was trained to find people rather than to find a tone.
+- **Alpha** — the file already carries its outline. **This is the path to use
+  if you already run rembg**, or a plugin that wraps it: export a transparent
+  PNG, drop it in, and Auto picks the alpha up with no settings at all.
+  Verified end to end — an rembg-shaped cutout reads as `alpha`, gives the
+  true subject area, and Background then puts 0% of its dots on the subject.
 - **Bright** — the fallback, kept because it needs nothing.
 
 The status bar names which one produced the outline, and says *(unreliable)*
