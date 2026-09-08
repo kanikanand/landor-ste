@@ -272,3 +272,80 @@ input[type=color] {
 }
 
 .download { margin-top: 10px; }
+
+
+/* ---------------------------------------------------------------------------
+ * Compact panel. Everything that matters should be reachable without
+ * scrolling on an ordinary laptop, so the rows are tight and the help text
+ * only appears when a control is being touched.
+ * ------------------------------------------------------------------------*/
+#panel { font-size: 12px; }
+.group { padding: 10px 12px; }
+.group-head h2 { font-size: 11px; letter-spacing: 0.09em; margin: 0 0 2px; }
+.group-head .hint { font-size: 11px; margin: 0 0 8px; opacity: 0.55; }
+.ctrl { margin-bottom: 8px; }
+.ctrl-top { margin-bottom: 2px; }
+.ctrl-top label, .ctrl > label { font-size: 12px; }
+.ctrl .val { font-size: 11px; }
+.slider { height: 16px; }
+.ctrl-toggle { font-size: 12px; }
+
+/* Help is reference, not running commentary: it appears on hover or while a
+   control has focus, and otherwise stays out of the way. */
+.ctrl .help { display: none; font-size: 11px; margin: 4px 0 0; opacity: 0.65; }
+.ctrl:hover .help,
+.ctrl:focus-within .help { display: block; }
+
+.io { display: flex; gap: 8px; }
+.io button { flex: 1 1 0; }
+.more-toggle { padding: 4px 8px; font-size: 11px; }
+.more-body { margin-top: 6px; }
+
+/* One row per control: label and value on the left, slider on the right.
+   Stacking them doubled the panel's height for no gain in legibility. */
+.ctrl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  column-gap: 10px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.ctrl-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+.ctrl-top label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.slider { width: 100%; margin: 0; }
+.ctrl > label,
+.ctrl > .ctrl-toggle,
+.ctrl > .shape-row,
+.ctrl > .upload-row,
+.ctrl > .help { grid-column: 1 / -1; }
+.ctrl-top input.color { margin: 0; }
+
+
+/* Final tightening: four sections have to sit in one window. */
+.group { padding: 8px 12px; }
+.group-head h2 { font-size: 10px; margin: 0 0 1px; }
+.group-head .hint { margin: 0 0 6px; }
+.more-toggle { padding: 3px 8px; margin-top: 4px; }
+.ctrl-toggle { display: flex; align-items: center; gap: 8px; }
+input.color { height: 20px; padding: 0; border: 0; background: none; }
+.brand h1 { margin-bottom: 2px; }
+.brand p { margin: 0; }
+
+/* Last of the tightening. The four sections plus the two buttons have to sit
+   in one window on a laptop, so every remaining pixel is a row of controls. */
+.group { padding: 6px 12px; }
+.group-head .hint { margin: 0 0 4px; font-size: 10.5px; }
+.ctrl { margin-bottom: 4px; }
+.more-toggle { margin-top: 2px; }
+.more-body { margin-top: 4px; padding-left: 8px; }
+.brand { padding-bottom: 6px; }
+.brand h1 { font-size: 14px; margin: 0; }
+.io { margin-bottom: 6px; }
+.io button { padding: 8px 10px; }

@@ -306,37 +306,58 @@ var CD = window.CD || {};
              e0: p.wipePosition - half, e1: p.wipePosition + half };
   }
 
-  /* Where the dots are allowed to live, relative to the subject.
+  /* Where the dots are allowed to live. Each mode is a different answer, and
+   * the difference has to be visible at a glance or the modes are the same
+   * mode wearing three names.
    *
-   *   subject     inside the silhouette — the halftone treatments
-   *   background  outside it — the subject stays a photograph and the dots
-   *               become the ground it sits on
-   *   edge        a band straddling the boundary, so the pattern and the
-   *               subject interlock instead of one sitting inside the other
-   *
-   * The band is measured by blurring the silhouette and reading how far the
-   * coverage has fallen from solid: that is a cheap distance from the edge,
-   * and it works equally on both sides of it. */
+   *   all         the whole frame — subject and ground alike, the pattern
+   *               varying with depth and light across everything
+   *   subject     inside the silhouette only
+   *   background  outside it only, and cleanly: the ground is dotted and the
+   *               subject is not touched at all
+   *   edge        a narrow band hugging the boundary between the two, and
+   *               nothing else
+   */
   function regionSource(mask, w, h, p) {
     var src = p.regionSource || 'subject';
+    var n = w * h, i;
+
     if (src === 'subject') return mask.clone();
 
     var out = new CD.Field(w, h, 1);
-    var o = out.data, m = mask.data, n = w * h, i;
+    var o = out.data, m = mask.data;
 
-    if (src === 'background') {
-      for (i = 0; i < n; i++) o[i] = 1 - clamp(m[i], 0, 1);
+    if (src === 'all') {
+      for (i = 0; i < n; i++) o[i] = 1;
       return out;
     }
 
-    /* edge band */
+    if (src === 'background') {
+      /* Dilate the silhouette a little before subtracting it, so the dots
+       * stop short of the subject rather than crowding its edge. Reading
+       * 1 - mask directly let dots sit anywhere the mask was merely soft,
+       * which on a subject whose outline is at all uncertain means dots
+       * scattered across it. */
+      var grown = mask.clone();
+      grown.blur(3, 2);
+      var gd = grown.data;
+      for (i = 0; i < n; i++) {
+        var cov = Math.max(clamp(m[i], 0, 1), clamp(gd[i], 0, 1));
+        o[i] = 1 - smoothstep(0.06, 0.3, cov);
+      }
+      return out;
+    }
+
+    /* edge: a band on the boundary and nothing either side of it. Blurring
+     * the silhouette turns coverage into a cheap distance from the outline —
+     * half coverage is the outline itself — so the band is simply how close
+     * to half the blurred value is. */
     var soft = mask.clone();
-    soft.blur(Math.max(1, Math.round(p.edgeBand || 12)), 2);
+    soft.blur(Math.max(1, Math.round(p.edgeBand || 8)), 2);
     var sd = soft.data;
     for (i = 0; i < n; i++) {
-      /* 1 on the boundary, falling to 0 well inside and well outside */
-      o[i] = clamp(1 - Math.abs(2 * clamp(sd[i], 0, 1) - 1), 0, 1);
-      o[i] = smoothstep(0.15, 0.75, o[i]);
+      o[i] = smoothstep(0.35, 0.92,
+        clamp(1 - Math.abs(2 * clamp(sd[i], 0, 1) - 1), 0, 1));
     }
     return out;
   }

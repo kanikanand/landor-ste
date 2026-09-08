@@ -12,34 +12,15 @@
 <aside id="panel">
   <header class="brand">
     <h1>Contour Dots</h1>
-    <p>Depth field &rarr; flow field &rarr; streamlines &rarr; oriented dots.</p>
   </header>
 
   <div class="io">
     <button id="loadImage" class="primary">Load image</button>
-    <div class="io-row">
-      <button id="exportSvg">Export SVG</button>
-      <button id="exportPng">Export PNG</button>
-    </div>
-    <div class="io-row">
-      <button id="reseed">Reseed</button>
-      <button id="reset">Reset</button>
-    </div>
-    <button id="download" class="primary download">Download SVG + settings</button>
+    <button id="download" class="download">Download</button>
   </div>
 
   <div id="controls"></div>
 
-  <footer class="foot">
-    <p><strong>Depth, not brightness.</strong> White reads as near, black as far.
-       Threshold carves the black negative space; nothing is drawn there.</p>
-    <p>Luminance is only a proxy for depth. <em>Estimate depth</em> runs
-       Depth&nbsp;Anything&nbsp;V2 in the browser and feeds the pipeline real
-       geometry instead — served over http, and one download on first use.</p>
-    <p>Rotation of every dot is <code>atan2(flow.y, flow.x)</code>, and flow is
-       the depth gradient turned ninety degrees:
-       <code>F = (-&part;D/&part;y, &part;D/&part;x)</code>.</p>
-  </footer>
 </aside>
 
 <main id="stage">

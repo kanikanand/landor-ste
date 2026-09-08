@@ -141,20 +141,30 @@ var CD = window.CD || {};
     var invert = borderMed > midMed;
 
     var orient = function (v) { return invert ? 1 - v : v; };
-    var bgMed = orient(borderMed);
-    var bgSpread = mad(s.border, borderMed);
+
+    /* The border in the orientation everything downstream uses, so quartiles
+     * of it mean what they say. */
+    var bord = s.border.map(orient).sort(function (a, b) { return a - b; });
+    var bgLevel = quantile(bord, 0.25);
+    var bgHi = quantile(bord, 0.75);
+    var bgMed = quantile(bord, 0.5);
 
     /* 2. NOISE, as it stands in the plate. What matters downstream is not
      *    this figure but this figure after the contrast curve has multiplied
      *    it, so the smoothing decision waits until contrast is known. */
     var noise = noiseLevel(lum, w, h);
 
-    /* 3. WHERE THE BACKGROUND ENDS. Two independent readings, and the higher
-     *    wins: the border tells us what the ground actually looks like
-     *    including its noise, and Otsu tells us where the plate's own
-     *    histogram splits. Border statistics alone fail when the subject
-     *    runs off the edge of the frame; Otsu alone fails on a plate that is
-     *    mostly background. */
+    /* 3. WHERE THE BACKGROUND ENDS.
+     *
+     *    The border is the reading that counts: it is background by
+     *    construction, so the cut belongs just above its level and its own
+     *    spread. Otsu is a *cap*, never a floor. Used as a floor it is
+     *    actively wrong on a portrait — a hard-lit face has enough dark tone
+     *    that the variance split lands inside the subject, and on a test
+     *    plate that threw away 15% of the face while a cut four times lower
+     *    kept 98% of it with no background bleeding in at all. As a cap it
+     *    still does its job, which is catching the plate where the subject
+     *    runs off the edge of the frame and the border is not background. */
     var maskThreshold;
     if (alpha) {
       maskThreshold = 0.06;      // unused; the alpha channel is the silhouette
@@ -166,8 +176,15 @@ var CD = window.CD || {};
         hist = flipped;
       }
       var byOtsu = otsu(hist, n);
-      var byBorder = bgMed + 4 * bgSpread + noise;
-      maskThreshold = clamp(Math.max(byBorder, byOtsu * 0.55), 0.01, 0.6);
+      /* The lower quartile is the background even when the subject runs off
+       * the edge of the frame and contaminates part of the border; the
+       * quartile spread then goes wide, which is exactly when Otsu's cap
+       * should take over. And Otsu can itself land below the ground on an
+       * odd histogram, so the floor keeps the cut above it regardless. */
+      var spread = Math.max(bgHi - bgLevel, noise, 1 / 255);
+      var byBorder = bgLevel + 2.5 * spread;
+      maskThreshold = clamp(Math.min(byBorder, byOtsu * 0.9),
+                            bgLevel + 2 / 255, 0.6);
     }
 
     /* 4. THE SUBJECT'S OWN TONAL RANGE. Contrast is set so that range fills
@@ -239,7 +256,7 @@ var CD = window.CD || {};
       _noise: +noise.toFixed(4),
       _effective: +effective.toFixed(4),
       _grit: +grit.toFixed(2),
-      _bg: +bgMed.toFixed(3),
+      _bg: +bgLevel.toFixed(3),
       _range: +range.toFixed(3)
     };
   }

@@ -6,8 +6,9 @@
  * imagery" is five modes. That is the wrong shape: they are not five points on
  * one axis, they are one axis and two switches.
  *
- *   MODE    where the dots live relative to the subject
- *           surface | fingerprint | interaction
+ *   MODE    which region of the picture gets dots
+ *           full (all of it) | background (the ground only) | edge (the
+ *           outline between them only)
  *
  *   PHOTO   whether the photograph is there at all
  *           on | off,  plus Reveal for the hand-over between the two
@@ -40,37 +41,36 @@ var CD = window.CD || {};
   ];
 
   var MODES = {
-    /* Dots on the subject: the halftone treatments, where the form itself is
-     * drawn out of dots and the picture hands over to them. */
-    surface: {
-      label: 'Surface',
-      hint: 'Dots on the subject. The form is drawn out of the picture.',
+    /* The whole frame becomes dots — subject and ground alike — with the
+     * pattern varying across the light and the depth of everything in it. */
+    full: {
+      label: 'Full',
+      hint: 'The whole picture becomes dots, varying with its light and depth.',
       params: {
-        regionSource: 'subject', fieldSource: 'image', edgeBand: 12,
-        showPhoto: true, photoFade: 0, photoWipe: 0.9,
-        wipe: true, wipePosition: 0.45, wipeAngle: 0, wipeFeather: 0.16,
-        edgeDissolve: 0.85,
-        dotSize: 2.0, dotSpacing: 4.0, lineSpacing: 7, lineDensity: 1,
-        sizeVariation: 0.12, sizeFalloff: 1.35,
-        randomness: 0.06, jitterAlong: 0.85, rowAlign: 0.35,
+        regionSource: 'all', fieldSource: 'image', edgeBand: 8,
+        showPhoto: false, photoFade: 0, photoWipe: 0,
+        wipe: false, wipePosition: 0.45, wipeAngle: 0, wipeFeather: 0.16,
+        edgeDissolve: 0.5,
+        dotSize: 2.0, dotSpacing: 3.6, lineSpacing: 6, lineDensity: 1,
+        sizeVariation: 0.1, sizeFalloff: 1.35,
+        randomness: 0.05, jitterAlong: 0.85, rowAlign: 0.3,
         flowStrength: 0.9, flowDistortion: 0.04, flowAngle: 0,
-        depthExaggeration: 2, densityDepth: 0.35,
-        sizeDepth: 0.7, colorDepth: 1, fadeDepth: 0
+        depthExaggeration: 2, densityDepth: 1,
+        sizeDepth: 1, colorDepth: 1, fadeDepth: 0
       }
     },
 
-    /* Dots as the ground the subject sits on. The photograph is left alone
-     * and the pattern rings it, so depth comes from distance to the outline
-     * rather than from the picture's tones — that is what makes the rings
-     * read as offsets of the subject instead of as a halftone of the wall. */
-    fingerprint: {
-      label: 'Fingerprint',
-      hint: 'Dots as the ground. The subject stays a photograph; the pattern rings it.',
+    /* The ground only. The subject is left alone as a photograph and the
+     * pattern rings it, so depth is distance from the outline — which is what
+     * makes the rings belong to the subject rather than halftone the wall. */
+    background: {
+      label: 'Background',
+      hint: 'Only the ground is dotted. The subject is left untouched.',
       params: {
-        regionSource: 'background', fieldSource: 'distance', edgeBand: 12,
+        regionSource: 'background', fieldSource: 'distance', edgeBand: 14,
         showPhoto: true, photoFade: 0, photoWipe: 0,
         wipe: false, wipePosition: 0.5, wipeAngle: 0, wipeFeather: 0.2,
-        edgeDissolve: 0.35,
+        edgeDissolve: 0.2,
         dotSize: 2.4, dotSpacing: 5.5, lineSpacing: 9, lineDensity: 1,
         sizeVariation: 0.05, sizeFalloff: 1,
         randomness: 0.02, jitterAlong: 0.9, rowAlign: 0.8,
@@ -80,33 +80,32 @@ var CD = window.CD || {};
       }
     },
 
-    /* A band straddling the outline, so the pattern and the subject
-     * interlock rather than one being laid inside the other. */
-    interaction: {
-      label: 'Interaction',
-      hint: 'A band across the outline, so pattern and subject interlock.',
+    /* Only the line where subject and ground meet, traced in dots. */
+    edge: {
+      label: 'Edge',
+      hint: 'Only the outline where subject meets background.',
       params: {
-        regionSource: 'edge', fieldSource: 'distance', edgeBand: 18,
+        regionSource: 'edge', fieldSource: 'distance', edgeBand: 7,
         showPhoto: true, photoFade: 0, photoWipe: 0,
         wipe: false, wipePosition: 0.5, wipeAngle: 0, wipeFeather: 0.2,
-        edgeDissolve: 0.9,
-        dotSize: 2.2, dotSpacing: 4.6, lineSpacing: 7, lineDensity: 1.2,
-        sizeVariation: 0.1, sizeFalloff: 1.1,
-        randomness: 0.05, jitterAlong: 0.85, rowAlign: 0.6,
-        flowStrength: 1, flowDistortion: 0.03, flowAngle: 0,
-        depthExaggeration: 0, densityDepth: 0.2,
-        sizeDepth: 0.5, colorDepth: 0.5, fadeDepth: 0
+        edgeDissolve: 0.75,
+        dotSize: 2.2, dotSpacing: 4.4, lineSpacing: 5, lineDensity: 1.4,
+        sizeVariation: 0.08, sizeFalloff: 1,
+        randomness: 0.04, jitterAlong: 0.85, rowAlign: 0.5,
+        flowStrength: 1, flowDistortion: 0, flowAngle: 0,
+        depthExaggeration: 0, densityDepth: 0,
+        sizeDepth: 0.35, colorDepth: 0.35, fadeDepth: 0
       }
     }
   };
 
-  var ORDER = ['surface', 'fingerprint', 'interaction'];
+  var ORDER = ['full', 'background', 'edge'];
 
   /* Write a mode's look parameters into `params`, leaving everything auto
    * owns exactly as it was — a mode decides where the dots go, the image
    * controls decide what the dots are reading. Returns the keys it touched. */
   function applyMode(params, name) {
-    var mode = MODES[name] || MODES.surface;
+    var mode = MODES[name] || MODES.full;
     var touched = [];
     Object.keys(mode.params).forEach(function (k) {
       if (OWNED.indexOf(k) === -1) return;      // never write outside the set

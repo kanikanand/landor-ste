@@ -609,39 +609,7 @@ var CD = window.CD || {};
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'render';
   }
 
-  function exportSVG() {
-    if (!state.dots.length) { status('Nothing to export yet.', true); return; }
-    if (state.pendingFull || state.quality !== 'full') {
-      clearTimeout(fullTimer);
-      run('full');
-    }
-    var p = state.params;
-    var svg = CD.buildSVG({
-      width: state.viewW, height: state.viewH,
-      background: p.background,
-      dots: state.dots,
-      shapeType: p.shapeType,
-      ramp: CD.makeRamp(p.colorFar, p.colorNear),
-      colorGamma: p.colorGamma,
-      title: state.srcName + ' — contour dots'
-    });
-    CD.download(state.srcName + '-contour-dots.svg', svg);
-    status('Exported SVG · ' + (svg.length / 1048576).toFixed(2) + ' MB · ' +
-           state.dots.length.toLocaleString() + ' vector dots');
-  }
 
-  function exportPNG() {
-    if (!canvasEl) return;
-    canvasEl.toBlob(function (blob) {
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = state.srcName + '-contour-dots.png';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-    }, 'image/png');
-    status('Exported PNG');
-  }
 
   function wireChrome() {
     var imgInput = $('#imageInput');
@@ -675,25 +643,9 @@ var CD = window.CD || {};
       fr.readAsText(f);
     });
 
-    $('#exportSvg').addEventListener('click', exportSVG);
     $('#download').addEventListener('click', downloadBundle);
-    $('#exportPng').addEventListener('click', exportPNG);
 
-    $('#reseed').addEventListener('click', function () {
-      state.params.seed = (Math.random() * 0xffffffff) >>> 0;
-      markDirty('lines');
-    });
 
-    $('#reset').addEventListener('click', function () {
-      var seed = state.params.seed;
-      state.params = CD.UI.defaults();
-      state.params.seed = seed;
-      applyMode();
-      if (state.params.autoTune) runAuto();
-      ui.syncAll();
-      markDirty('depth');
-      status('Controls reset');
-    });
 
     /* drag & drop: images set the source, SVGs set the dot shape */
     var stage = $('#stage');
