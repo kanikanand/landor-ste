@@ -150,6 +150,28 @@ var CD = window.CD || {};
       var mt = p.maskThreshold === undefined ? p.threshold : p.maskThreshold;
       for (i = 0; i < n; i++) m[i] = smoothstep(mt, mt + 0.05, edge.data[i]);
     }
+    /* Despeckle, by majority vote of the neighbourhood.
+     *
+     * Thresholding a low-quality plate — sensor noise, compression blocking —
+     * gives a silhouette riddled with islands and pinholes, and the tracer
+     * stops dead every time a line crosses one. Measured on a noisy plate at
+     * the precision settings, contours shattered from 62 strands averaging
+     * 266 points into 513 fragments averaging 33: the same dots, scattered
+     * instead of drawn.
+     *
+     * Blurring the mask harder fixes that but dilates the silhouette, which
+     * is the thing the ordering above exists to prevent. Blurring and then
+     * re-hardening about half coverage is the way out: it is a majority
+     * filter, so islands smaller than the radius vanish and pinholes fill,
+     * while a straight edge's half-coverage contour does not move at all.
+     * Cleanup stays available for deliberately softening the edge. */
+    if (p.maskDespeckle > 0) {
+      var vote = mask.clone();
+      vote.blur(p.maskDespeckle, 2);
+      var vd = vote.data;
+      for (i = 0; i < n; i++) m[i] = smoothstep(0.42, 0.58, vd[i]);
+    }
+
     /* feather the mask edge slightly so contours die out instead of snapping */
     mask.blur(1, 1);
 

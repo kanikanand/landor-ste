@@ -381,7 +381,8 @@ across all shape types; the remainder is antialiasing on dot edges.
 **Depth source** — Estimate depth (Depth Anything V2 instead of luminance),
 Show depth map (field 1 as a greyscale underlay).
 
-**Silhouette** — Use image alpha, Silhouette cut, Silhouette cleanup.
+**Silhouette** — Use image alpha, Silhouette cut, Silhouette despeckle,
+Silhouette cleanup.
 
 **Overlay** — Show photograph, Photo fade, Photo hand-over (fades the picture
 out as the dots come up), Partial overlay (the wipe), Wipe position / angle /
@@ -421,8 +422,9 @@ falling off into shadow at its edges. Studio portraits and product shots on
 black work best.
 
 - Set the **silhouette** first, and independently: **Silhouette cut** so the
-  background drops out, **Silhouette cleanup** as low as the edge tolerates.
-  Nothing you do afterwards will move it.
+  background drops out, **Silhouette despeckle** until the edge stops
+  crawling, **Silhouette cleanup** as low as the edge tolerates. Nothing you
+  do afterwards will move it.
 - Then **Depth smoothing** — raise it until the contours stop breaking into
   small closed loops and start reading as bands. It is free now: it costs
   structure but not silhouette.
@@ -430,6 +432,44 @@ black work best.
   map and starts being a striped halftone; both are useful.
 - If the subject is dark against a light ground, turn on **Invert depth**
   first — nothing else will behave until the near/far sense is right.
+
+### When the dots scatter instead of drawing lines
+
+Short broken arcs with gaps between them, rather than continuous strands,
+means the **silhouette is speckled** and the tracer is stopping dead every
+time a contour crosses an island or a pinhole. Thresholding a low-quality
+plate — sensor noise, compression blocking — produces exactly that.
+
+It is worth being precise about how much this costs. On a noisy plate at the
+precision settings below, contours shattered from **62 strands averaging 266
+points into 513 fragments averaging 33**. The same dots, scattered instead of
+drawn.
+
+**Silhouette despeckle** is the fix and it is free. It blurs the mask and then
+re-hardens it about half coverage — a majority filter, so islands smaller than
+the radius vanish and pinholes fill, while a straight edge's half-coverage
+contour does not move at all. Compared on the same plate: blurring with
+Silhouette cleanup denoises just as well but adds 1,496 pixels of dilation,
+where despeckle adds none. On a clean plate it changes nothing whatsoever —
+same contour count, same mean length, same dot count to the unit.
+
+Despeckle alone takes the mean strand from 33 back to 101; putting **Depth
+smoothing** and **Flow coherence** back up as well returns it to 266, which is
+what the same subject gives when the plate is clean.
+
+### A low-quality plate wants the opposite of the precision settings
+
+The table below is tuned for a clean render. A noisy or compressed photograph
+needs the smoothing it tells you to remove — the structure those controls
+throw away is noise, not form, and keeping it is what shatters the contours:
+
+| control | low-quality plate |
+|---|---|
+| Silhouette despeckle | 3–5 |
+| Silhouette cleanup | 0–1 (despeckle does the denoising) |
+| Depth smoothing | 10–16 |
+| Flow coherence | 6–10 |
+| Dot spacing / Line spacing | wider — fine grain has nothing real to resolve |
 
 ### When the dots wander instead of tracking the subject
 

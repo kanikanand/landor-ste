@@ -37,10 +37,17 @@ var CD = window.CD || {};
           def: 0.06, stage: 'depth',
           help: 'The luminance that counts as subject rather than background. ' +
                 'Ignored when an alpha silhouette is in use.' },
+        { key: 'maskDespeckle', label: 'Silhouette despeckle', min: 0, max: 8, step: 1,
+          def: 2, stage: 'depth',
+          help: 'Majority vote over the neighbourhood: erases islands and fills ' +
+                'pinholes left by noise or compression, without moving the edge. ' +
+                'Raise it for low-quality plates — a speckled silhouette is what ' +
+                'shatters the contours into fragments.' },
         { key: 'maskSmoothing', label: 'Silhouette cleanup', min: 0, max: 8, step: 1, def: 1,
           stage: 'depth',
-          help: 'Settles a noisy edge. Keep it low — this is the one blur that ' +
-                'can push the silhouette off the subject.' }
+          help: 'Softens the edge. Keep it low — this is the one control that ' +
+                'can push the silhouette off the subject. For noise, reach for ' +
+                'despeckle instead; it costs nothing.' }
       ]
     },
     {
