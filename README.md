@@ -94,6 +94,19 @@ down, because it threw away any knowledge of where the subject was. It is
 still there under Pattern → More for the cases where a truly flat lattice is
 wanted.
 
+## A mode is not a reset
+
+Switching mode used to write the whole preset over your settings, so tuning
+the dots and then changing where they go threw the tuning away. A preset is a
+starting point for a control nobody has touched, not an instruction to discard
+a decision someone has already made.
+
+The panel now records what you move. Switching mode overwrites only the
+settings you have never touched, plus the three that *are* the mode — which
+region, whether depth comes from the picture or from distance to the outline,
+and the band width. Measured: set Size to 6.5 and Spacing to 12, switch mode,
+and both are still 6.5 and 12.
+
 ## Only what the mode can act on
 
 The three modes do not need the same controls, and showing the ones they
@@ -121,11 +134,34 @@ them does something. A section with nothing left to show hides, and so does a
 **More** button with nothing behind it. The settings file records only what
 applied, for the same reason.
 
-Five controls went entirely rather than being hidden — Soften edge, Size
-falloff, Row density, Flat lattice and Colour falloff. Each either duplicated
-a neighbour or was a second-order curve on a control that already had a
-strength, and the lattice fill was the last of the grid mode: **Grid ↔ form**
-at 0 does it better, because it still knows where the subject is.
+**Nodes.** Dot shape is gone — it is always a circle. In its place, **Join
+into nodes** draws each row as a line through its own dots, so the field reads
+as a network rather than as loose points. It exports as one polyline per row,
+editable as a path.
+
+**Finer detail.** Everything is read on an analysis grid, and that grid was the
+ceiling on how small a thing could be detected at all. It was 420px, chosen
+when the pipeline was far slower than it is now, and it was quietly discarding
+the small stuff. At 640px the same plate yields 220 contours instead of 135
+and twice the dots, for 1.8× the time — a full render is still about a
+quarter of a second. 900px was tried and rejected: four times the cost for
+proportionally less gain.
+
+**One way to say one thing.** Row spacing now follows dot spacing rather than
+being its own control — two numbers for one idea meant tightening the dots
+left the rows where they were, and the field went stripy instead of finer.
+Flow spread, Wobble and Scatter-along went the same way: each was a second
+knob on something already exposed, and they are now fixed at the values that
+were worth having.
+
+Nine controls went entirely rather than being hidden — Soften edge, Size falloff, Row
+density, Flat lattice, Colour falloff, Dot shape, Row spacing, Flow spread and
+Wobble. Each either duplicated a neighbour or was a second-order curve on a
+control that already had a strength.
+
+Three controls depend on something outside the panel — the image carrying its
+own cut-out, or being able to fetch a model. When that thing is absent they
+now grey out and say why, instead of looking live and doing nothing.
 
 ## Modes, and why there are only three
 

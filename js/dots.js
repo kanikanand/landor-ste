@@ -101,7 +101,9 @@ var CD = window.CD || {};
   }
 
   /* Each dot: {x, y, s (radius in px), r (radians), d (depth 0..1),
-   *             c (colour parameter 0..1), a (opacity 0..1)} */
+   *             c (colour parameter 0..1), a (opacity 0..1),
+   *             li (which row it belongs to, so the row can be drawn as a
+   *                 line through its own dots)} */
   function buildDots(ctx) {
     var lines = ctx.lines;
     var depth = ctx.depth, grad = ctx.grad, mask = ctx.mask, flow = ctx.flow;
@@ -204,7 +206,7 @@ var CD = window.CD || {};
               py += ux * rPerp + uy * rTan;
             }
 
-            dots.push({ x: px, y: py, s: size, r: rot, d: d, c: ch.c, a: ch.a });
+            dots.push({ x: px, y: py, s: size, r: rot, d: d, c: ch.c, a: ch.a, li: li });
             if (dots.length >= maxDots) break;
           }
           t += localSpacing;

@@ -97,17 +97,17 @@ var CD = window.CD || {};
           def: 0.13, stage: 'depth',
           help: 'Everything below this reads as fully far. Raise it to stop dark ' +
                 'areas carrying any modelling.' },
-        { key: 'useAlpha', modes: ['background', 'edge'], label: 'Use alpha', type: 'toggle',
+        { key: 'useAlpha', needs: 'alpha', modes: ['background', 'edge'], label: 'Use alpha', type: 'toggle',
           def: true, stage: 'depth',
           help: 'A transparent PNG already knows its own outline exactly, ' +
                 'including parts too dark to find any other way.' },
-        { key: 'cutoutModel', modes: ['background', 'edge'], label: 'Cut out subject', type: 'toggle', def: false,
+        { key: 'cutoutModel', needs: 'network', modes: ['background', 'edge'], label: 'Cut out subject', type: 'toggle', def: false,
           stage: 'depth',
           help: 'Runs a matting model in the page to find the subject — the same ' +
                 'kind of model rembg uses on the desktop, so a transparent PNG ' +
                 'made there works just as well and needs no download. First use ' +
                 'fetches the model; the page must be served over http.' },
-        { key: 'modelDepth', label: 'AI depth',
+        { key: 'modelDepth', needs: 'network', label: 'AI depth',
           type: 'toggle', def: false, stage: 'depth',
           help: 'Works out the actual geometry instead of guessing from ' +
                 'brightness. Slow the first time, and needs the page served over ' +
@@ -163,21 +163,22 @@ var CD = window.CD || {};
       controls: [
         { key: 'dotSize', label: 'Size', min: 0.3, max: 14, step: 0.1, def: 2.0,
           stage: 'dots' },
-        { key: 'dotSpacing', label: 'Gap', min: 1.5, max: 40, step: 0.25,
+        { key: 'dotSpacing', label: 'Spacing', min: 1.5, max: 40, step: 0.25,
           def: 4, stage: 'dots' },
         { key: 'flowStrength', label: 'Grid ↔ form', min: 0, max: 1,
           step: 0.01, def: 0.9, stage: 'flow',
           help: 'At 0 the rows run straight and the dots read as a grid. At 1 ' +
                 'they wrap around the form. Everything in between is a mix.' },
+        { key: 'connect', label: 'Join into nodes', min: 0, max: 1, step: 0.01, def: 0,
+          stage: 'draw',
+          help: 'Draws each row as a line through its own dots, so the field ' +
+                'reads as a network instead of loose points. 0 is dots only.' },
+      ],
+      more: [
         { key: 'edgeDissolve', label: 'Edge fade', min: 0, max: 1, step: 0.01,
           def: 0.85, stage: 'dots',
           help: 'Shrinks dots away as they reach the edge of where they are ' +
-                'allowed, instead of stopping mid-row.' }
-      ],
-      more: [
-        { key: 'lineSpacing', label: 'Row gap', min: 2, max: 60, step: 0.5,
-          def: 7, stage: 'lines' },
-        { key: 'shapeType', label: 'Shape', type: 'shape', def: 'circle', stage: 'draw' },
+                'allowed, instead of stopping mid-row.' },
         { key: 'flowAngle', label: 'Angle', min: 0, max: 360, step: 1, def: 0,
           stage: 'flow',
           help: 'Which way the straight rows run. Also the direction the dots ' +
@@ -186,24 +187,12 @@ var CD = window.CD || {};
           def: 0, stage: 'dots',
           help: 'Locks the dots to a shared rhythm so they form columns as well ' +
                 'as rows. Strongest where the rows run straight.' },
-        { key: 'flowSmoothing', label: 'Form reach', min: 0, max: 24,
-          step: 1, def: 6, stage: 'flow',
-          help: 'Spreads the direction of the form into flat areas. Low values ' +
-                'let those areas fall back to the grid angle.' },
         { key: 'sizeVariation', label: 'Size varies', min: 0, max: 1, step: 0.01,
           def: 0.12, stage: 'dots',
           help: 'Random spread in dot size, for texture.' },
         { key: 'randomness', label: 'Scatter', min: 0, max: 1, step: 0.01, def: 0.06,
           stage: 'dots',
           help: 'Loosens the spacing so the pattern stops looking mechanical.' },
-        { key: 'jitterAlong', label: 'Scatter along', min: 0, max: 1, step: 0.01,
-          def: 0.75, stage: 'dots',
-          help: 'Keeps the scatter running along each row rather than across it. ' +
-                'Across is what breaks a row up; along barely shows.' },
-        { key: 'flowDistortion', label: 'Wobble', min: 0, max: 1, step: 0.01, def: 0.04,
-          stage: 'flow',
-          help: 'Bends the rows with slow noise so they breathe instead of ' +
-                'reading like a survey map.' },
         { key: 'depthExaggeration', modes: ['full'], label: 'Relief', min: 0, max: 30,
           step: 0.1, def: 2, stage: 'dots',
           help: 'Shifts dots outwards where the surface bulges towards you, so ' +
@@ -219,16 +208,16 @@ var CD = window.CD || {};
       group: 'Look',
       hint: 'Colour, and what changes from near to far.',
       controls: [
-        { key: 'sizeDepth', label: 'Size', min: 0, max: 1, step: 0.01, def: 1,
+        { key: 'sizeDepth', label: 'Size varies', min: 0, max: 1, step: 0.01, def: 1,
           stage: 'dots',
           help: '0 keeps every dot the same size. Uniform dots stay legible as ' +
                 'dots; large ones merge into fill where the surface is near.' },
-        { key: 'colorDepth', label: 'Colour', min: 0, max: 1, step: 0.01,
+        { key: 'colorDepth', label: 'Colour varies', min: 0, max: 1, step: 0.01,
           def: 1, stage: 'dots',
           help: '0 renders everything in the dot colour, flat.' },
         { key: 'colorNear', label: 'Dots', type: 'color', def: '#ff2233', stage: 'draw' },
         { key: 'background', label: 'Background', type: 'color', def: '#000000', stage: 'draw' },
-        { key: 'densityDepth', label: 'Density', min: 0, max: 1, step: 0.01,
+        { key: 'densityDepth', label: 'Density varies', min: 0, max: 1, step: 0.01,
           def: 1, stage: 'lines',
           help: '0 covers the whole area evenly, lights and darks alike. Use it ' +
                 'when you have chosen an area and want all of it.' }
@@ -257,6 +246,17 @@ var CD = window.CD || {};
     maxLineLength: 4000,
     flowNoiseScale: 1,
     seed: 12345,
+
+    /* Settled once and no longer worth a control: a shape that is always a
+     * circle, and the second-order curves whose strengths are already exposed
+     * as Depth response. Kept as parameters so the renderer and the exporter
+     * need no special cases. */
+    shapeType: 'circle',
+    lineDensity: 1,
+    flowDistortion: 0,
+    jitterAlong: 0.85,
+    sizeFalloff: 1.35,
+    colorGamma: 1,
 
     /* Written by a preset rather than by a control, but never left undefined:
      * a reset has to land somewhere valid before applyMode runs again. */
@@ -318,6 +318,7 @@ var CD = window.CD || {};
      * them; and every separation control is noise in Full, which covers the
      * whole frame and so has no outside to find. */
     var rowModes = [];
+    var needRows = [];
     var sections = [];
 
     SCHEMA.forEach(function (g) {
@@ -347,6 +348,7 @@ var CD = window.CD || {};
       var render = function (c, into) {
         var row = el('div', 'ctrl');
         if (c.modes) rowModes.push({ row: row, modes: c.modes });
+        if (c.needs) needRows.push({ row: row, needs: c.needs, control: c });
 
         if (c.type === 'toggle') {
           var lab = el('label', 'ctrl-toggle');
@@ -385,6 +387,7 @@ var CD = window.CD || {};
             mb.title = CD.Presets.MODES[name].hint;
             mb.addEventListener('click', function () {
               params[c.key] = name;
+              setRef(refs, c.key, name);   /* show it immediately */
               onChange(c.stage, c.key);
             });
             if (params[c.key] === name) mb.classList.add('on');
@@ -406,6 +409,9 @@ var CD = window.CD || {};
             sb.dataset.source = pair[1];
             sb.addEventListener('click', function () {
               params[c.key] = pair[1];
+              setRef(refs, c.key, pair[1]);   /* the selection was invisible
+                                                 without this: the value moved
+                                                 and the panel did not */
               onChange(c.stage, c.key);
             });
             if (params[c.key] === pair[1]) sb.classList.add('on');
@@ -529,9 +535,35 @@ var CD = window.CD || {};
     }
     applyModeVisibility(params.mode);
 
+    /* Three controls depend on something outside the panel: one on the image
+     * carrying its own outline, two on being able to fetch a model. When that
+     * thing is not there they do nothing, and a control that does nothing
+     * while looking live is the most confusing kind. Grey them out and put
+     * the reason where the value would be. */
+    function applyAvailability(avail) {
+      needRows.forEach(function (r) {
+        var ok = !!avail[r.needs];
+        r.row.classList.toggle('unavailable', !ok);
+        var input = r.row.querySelector('input, button');
+        if (input) input.disabled = !ok;
+        var note = r.row.querySelector('.why');
+        if (!ok) {
+          if (!note) {
+            note = el('span', 'why');
+            var lab = r.row.querySelector('.ctrl-toggle');
+            (lab || r.row).appendChild(note);
+          }
+          note.textContent = avail.reasons[r.needs] || 'not available';
+        } else if (note) {
+          note.remove();
+        }
+      });
+    }
+
     return {
       refs: refs,
       modeChanged: applyModeVisibility,
+      availability: applyAvailability,
       set: function (key, v) { setRef(refs, key, v); },
       call: function (key, fn) {
         (refs[key] || []).forEach(function (r) { if (r[fn]) r[fn].apply(null, [].slice.call(arguments, 2)); });

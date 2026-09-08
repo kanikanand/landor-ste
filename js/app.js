@@ -13,7 +13,11 @@ var CD = window.CD || {};
   'use strict';
 
   var VIEW_MAX = 900;    // long side of the render canvas, in CSS px
-  var FIELD_MAX = 420;   // long side of the analysis grid
+  /* Long side of the analysis grid. Everything — the silhouette, the depth,
+   * the flow field — is read at this size, so it is the ceiling on how fine a
+   * detail can be detected at all. 420 was chosen when the pipeline was much
+   * slower than it is now, and it was quietly throwing away the small stuff. */
+  var FIELD_MAX = 640;
 
   var STAGES = CD.UI.STAGES;
 
@@ -28,6 +32,7 @@ var CD = window.CD || {};
     backCanvas: null,    // the empty-set frame, when one has been loaded
     maskFrom: 'brightness',
     matte: null,
+    touched: {},         // what the user has moved; a mode never overrides it
     cutout: null,       // matte from the in-page model
     auto: null,          // what the tuner read off the plate
     modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
@@ -329,12 +334,28 @@ var CD = window.CD || {};
   }
 
   function stageFlow(p) {
+    p = withDerived(p);
     state.flow = CD.buildFlow(state.dep, p, function (x, y) {
       return (typeof noise === 'function') ? noise(x, y) : 0.5;
     });
   }
 
+  /* Rows are spaced off the same number as the dots along them. Two separate
+   * spacings were two ways to say one thing, and they fought each other. */
+  function withDerived(p) {
+    var q = {};
+    Object.keys(p).forEach(function (k) { q[k] = p[k]; });
+    /* Row spacing follows dot spacing. Two separate numbers were two ways of
+     * saying one thing, and they fought: tightening the dots left the rows
+     * where they were, so the field went stripy instead of finer. Flow
+     * smoothing is deliberately NOT set here — auto reads it off the grain,
+     * and overriding it would undo that. */
+    q.lineSpacing = Math.max(2, p.dotSpacing * 1.7);
+    return q;
+  }
+
   function stageLines(p) {
+    p = withDerived(p);
     var tracer = new CD.Tracer({
       flow: state.flow,
       depth: state.dep.depth,
@@ -349,6 +370,7 @@ var CD = window.CD || {};
   }
 
   function stageDots(p) {
+    p = withDerived(p);
     var args = {
       lines: state.lines,
       depth: state.dep.depth,
@@ -394,6 +416,30 @@ var CD = window.CD || {};
     }
 
     if (p.depthPreview && state.dep) drawDepthPreview();
+
+    /* Nodes: the row drawn as a line through its own dots, so the field reads
+     * as a network rather than as loose points. Drawn under the dots so every
+     * join disappears behind the dot it arrives at. */
+    if (p.connect > 0) {
+      var cd = state.dots;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = p.colorNear;
+      ctx.globalAlpha = Math.min(1, p.connect);
+      ctx.lineWidth = Math.max(0.35, p.dotSize * 0.22 * p.connect);
+      ctx.beginPath();
+      for (var q = 1; q < cd.length; q++) {
+        var a0 = cd[q - 1], b0 = cd[q];
+        if (a0.li !== b0.li) continue;
+        /* a jump means the row restarted somewhere else */
+        if (Math.hypot(b0.x - a0.x, b0.y - a0.y) > p.dotSpacing * 3) continue;
+        ctx.moveTo(a0.x, a0.y);
+        ctx.lineTo(b0.x, b0.y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
 
     /* Batch by colour and opacity bucket: one state change per bucket instead
      * of one per dot, which is the difference between a stutter and an instant
@@ -516,10 +562,21 @@ var CD = window.CD || {};
     if (ui) ui.syncAll();
   }
 
-  /* Mode and fill are look decisions; auto owns the image decisions. The two
-   * sets are disjoint, so this never disturbs the calibration. */
+  /* Switching mode changes where the dots go. It must not undo the work of
+   * getting them to look right: a preset is a starting point for a control
+   * nobody has touched yet, not an instruction to discard a decision someone
+   * has already made. So anything the user has moved is left exactly as it
+   * is, and only the untouched settings take the new mode's suggestion.
+   *
+   * The three that define the mode are the exception — they are the mode. */
+  var DEFINES_MODE = { regionSource: 1, fieldSource: 1, edgeBand: 1 };
+
   function applyMode() {
-    CD.Presets.applyMode(state.params, state.params.mode);
+    var mode = CD.Presets.MODES[state.params.mode] || CD.Presets.MODES.full;
+    Object.keys(mode.params).forEach(function (k) {
+      if (CD.Presets.OWNED.indexOf(k) === -1) return;
+      if (DEFINES_MODE[k] || !state.touched[k]) state.params[k] = mode.params[k];
+    });
     if (ui) { ui.syncAll(); ui.modeChanged(state.params.mode); }
   }
 
@@ -684,6 +741,7 @@ var CD = window.CD || {};
       state.pendingFull = null;
     }
     updateStats(quality);
+    refreshAvailability();
   }
 
   /* ==========================================================================
@@ -697,6 +755,21 @@ var CD = window.CD || {};
     if (!e) return;
     e.textContent = msg;
     e.classList.toggle('error', !!isError);
+  }
+
+  /* What the three conditional controls actually have to work with. Called
+   * after every render, because loading an image can change the answer. */
+  function refreshAvailability() {
+    if (!ui) return;
+    var netReason = CD.DepthModel ? CD.DepthModel.unavailableReason() : 'module missing';
+    ui.availability({
+      alpha: !!state.hasAlpha,
+      network: !netReason,
+      reasons: {
+        alpha: 'this image has no cut-out',
+        network: netReason || ''
+      }
+    });
   }
 
   function updateStats(quality) {
@@ -730,6 +803,8 @@ var CD = window.CD || {};
       width: state.viewW, height: state.viewH,
       background: p.background, dots: state.dots, shapeType: p.shapeType,
       ramp: state.ramp, colorGamma: p.colorGamma,
+      connect: p.connect, dotSize: p.dotSize, dotSpacing: p.dotSpacing,
+      strokeColor: p.colorNear,
       title: state.srcName + ' — contour dots'
     });
     var folder = 'contour-dots-' + slug(state.srcName);
@@ -838,6 +913,8 @@ var CD = window.CD || {};
 
     ui = CD.UI.buildPanel(document.getElementById('controls'), state.params,
       function (stage, key) {
+        /* remember that this one is the user's now */
+        if (key && key !== 'mode') state.touched[key] = true;
         /* Switching the model on is the one control that has to fetch
          * something before its stage can be rebuilt. */
         if (key === 'modelDepth' && state.params.modelDepth) ensureModelDepth();

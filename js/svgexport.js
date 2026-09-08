@@ -55,6 +55,32 @@ var CD = window.CD || {};
       out.push('</defs>');
     }
 
+    /* The rows, drawn as lines through their own dots, under everything else
+     * so the joins hide behind the dots. One polyline per row rather than a
+     * segment per gap, which is both smaller and editable as a path. */
+    if (opts.connect > 0) {
+      var run = [], prev = null;
+      var flush = function () {
+        if (run.length >= 4) {
+          out.push('<polyline fill="none" points="' + run.join(' ') + '"/>');
+        }
+        run = [];
+      };
+      out.push('<g stroke="' + (opts.strokeColor || '#000') +
+               '" stroke-width="' + num(Math.max(0.35, (opts.dotSize || 2) * 0.22 * opts.connect), 2) +
+               '" stroke-opacity="' + num(Math.min(1, opts.connect), 2) +
+               '" stroke-linecap="round" stroke-linejoin="round">');
+      for (i = 0; i < dots.length; i++) {
+        var dp = dots[i];
+        if (prev && (prev.li !== dp.li ||
+            Math.hypot(dp.x - prev.x, dp.y - prev.y) > (opts.dotSpacing || 4) * 3)) flush();
+        run.push(num(dp.x) + ',' + num(dp.y));
+        prev = dp;
+      }
+      flush();
+      out.push('</g>');
+    }
+
     /* Group dots into a small number of colour-and-opacity buckets so the file
      * is a handful of <g fill> groups rather than an attribute pair per dot.
      * This is the bucketing the canvas uses, called from the same place, so
