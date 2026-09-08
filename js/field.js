@@ -175,29 +175,44 @@ var CD = window.CD || {};
     /* feather the mask edge slightly so contours die out instead of snapping */
     mask.blur(1, 1);
 
-    /* 3. image-level contrast, now that the silhouette is safely decided. */
+    /* 3. Exposure: centre the subject's tones on the pivot before stretching
+     *    them. contrastCurve is a gain about 0.5, so a subject that sits at
+     *    0.35 gets pushed down as it is stretched and its shadow end clips to
+     *    a flat zero — a region with no gradient at all, where the flow field
+     *    is degenerate and the contours fall apart. Measured on an
+     *    underexposed plate that cost 40% of the subject's tonal range and
+     *    halved the mean strand length. Shifting first costs nothing and the
+     *    stretch then lands symmetrically.
+     *
+     *    It goes after the silhouette so that the mask threshold stays in the
+     *    plate's own tone space, which is where it can be measured. */
+    if (p.exposure) {
+      for (i = 0; i < n; i++) d[i] = clamp(d[i] + p.exposure, 0, 1);
+    }
+
+    /* 4. image-level contrast, now that the silhouette is safely decided. */
     if (p.imageContrast !== 1) {
       for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.imageContrast);
     }
 
-    /* 4. relief smoothing. Streamlines can only be continuous if depth is
+    /* 5. relief smoothing. Streamlines can only be continuous if depth is
      *    continuous, and this is what buys that — now at no cost to the
      *    silhouette, which is already decided. */
     depth.blur(p.depthSmoothing, 3);
 
-    /* 5. depth contrast — separates near from far, steepening the relief. */
+    /* 6. depth contrast — separates near from far, steepening the relief. */
     if (p.depthContrast !== 1) {
       for (i = 0; i < n; i++) d[i] = contrastCurve(d[i], p.depthContrast);
     }
 
-    /* 6. the depth floor. Everything under it flattens to zero relief, and
+    /* 7. the depth floor. Everything under it flattens to zero relief, and
      *    the remaining range is renormalised so the full dot-size range is
      *    still usable. This no longer carves the silhouette — that is the
      *    mask's job, above. */
     var t = p.threshold, inv = 1 / Math.max(1e-4, 1 - t);
     for (i = 0; i < n; i++) d[i] = clamp((d[i] - t) * inv, 0, 1);
 
-    /* 7. gradient of depth (Sobel) — the source of the flow field. */
+    /* 8. gradient of depth (Sobel) — the source of the flow field. */
     var grad = new CD.Field(w, h, 2);
     var gd = grad.data;
     for (y = 0; y < h; y++) {
@@ -214,7 +229,7 @@ var CD = window.CD || {};
       }
     }
 
-    /* 8. RELIEF — the displacement field that depth exaggeration applies.
+    /* 9. RELIEF — the displacement field that depth exaggeration applies.
      *
      * Sampling the raw gradient once per dot is what tears contours apart.
      * The displacement's magnitude was a saturating function of |grad D|,
@@ -291,8 +306,59 @@ var CD = window.CD || {};
              e0: p.wipePosition - half, e1: p.wipePosition + half };
   }
 
+  /* Where the dots are allowed to live, relative to the subject.
+   *
+   *   subject     inside the silhouette — the halftone treatments
+   *   background  outside it — the subject stays a photograph and the dots
+   *               become the ground it sits on
+   *   edge        a band straddling the boundary, so the pattern and the
+   *               subject interlock instead of one sitting inside the other
+   *
+   * The band is measured by blurring the silhouette and reading how far the
+   * coverage has fallen from solid: that is a cheap distance from the edge,
+   * and it works equally on both sides of it. */
+  function regionSource(mask, w, h, p) {
+    var src = p.regionSource || 'subject';
+    if (src === 'subject') return mask.clone();
+
+    var out = new CD.Field(w, h, 1);
+    var o = out.data, m = mask.data, n = w * h, i;
+
+    if (src === 'background') {
+      for (i = 0; i < n; i++) o[i] = 1 - clamp(m[i], 0, 1);
+      return out;
+    }
+
+    /* edge band */
+    var soft = mask.clone();
+    soft.blur(Math.max(1, Math.round(p.edgeBand || 12)), 2);
+    var sd = soft.data;
+    for (i = 0; i < n; i++) {
+      /* 1 on the boundary, falling to 0 well inside and well outside */
+      o[i] = clamp(1 - Math.abs(2 * clamp(sd[i], 0, 1) - 1), 0, 1);
+      o[i] = smoothstep(0.15, 0.75, o[i]);
+    }
+    return out;
+  }
+
+  /* Depth as distance from the silhouette rather than from the picture's own
+   * tones. Contours of a distance field are offset curves of the outline, so
+   * streamlines of it ring the subject — the fingerprint. The blurred mask is
+   * a distance field everywhere it matters, and costs one separable blur
+   * instead of a proper transform. */
+  function distanceDepth(mask, w, h, radius) {
+    var f = mask.clone();
+    f.blur(Math.max(2, Math.round(radius)), 3);
+    var d = f.data, n = w * h, i;
+    var lo = Infinity, hi = -Infinity;
+    for (i = 0; i < n; i++) { if (d[i] < lo) lo = d[i]; if (d[i] > hi) hi = d[i]; }
+    var span = (hi - lo) || 1;
+    for (i = 0; i < n; i++) d[i] = (d[i] - lo) / span;
+    return f;
+  }
+
   function buildRegion(mask, w, h, p) {
-    var region = mask.clone();
+    var region = regionSource(mask, w, h, p);
     if (!p.wipe) return region;
 
     var r = region.data;
@@ -309,6 +375,40 @@ var CD = window.CD || {};
     }
 
     return region;
+  }
+
+  /* Swap in a different depth field and rebuild everything derived from it.
+   * The mask is kept: the silhouette is still the silhouette, only the
+   * surface the contours follow has changed. */
+  function withDepth(dep, depth, p) {
+    var w = dep.w, h = dep.h, n = w * h;
+    var d = depth.data;
+
+    var grad = new CD.Field(w, h, 2);
+    var gd = grad.data;
+    var x, y;
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        var x0 = x > 0 ? x - 1 : 0, x1 = x < w - 1 ? x + 1 : w - 1;
+        var y0 = y > 0 ? y - 1 : 0, y1 = y < h - 1 ? y + 1 : h - 1;
+        var tl = d[y0 * w + x0], tc = d[y0 * w + x], tr = d[y0 * w + x1];
+        var ml = d[y * w + x0], mr = d[y * w + x1];
+        var bl = d[y1 * w + x0], bc = d[y1 * w + x], br = d[y1 * w + x1];
+        gd[(y * w + x) * 2] = ((tr + 2 * mr + br) - (tl + 2 * ml + bl)) * 0.125;
+        gd[(y * w + x) * 2 + 1] = ((bl + 2 * bc + br) - (tl + 2 * tc + tr)) * 0.125;
+      }
+    }
+
+    var relief = new CD.Field(w, h, 2);
+    var rl = relief.data;
+    for (var i = 0; i < n; i++) {
+      var rx = gd[i * 2], ry = gd[i * 2 + 1];
+      var rm = Math.hypot(rx, ry);
+      if (rm > 1e-5) { var k = d[i] / rm; rl[i * 2] = rx * k; rl[i * 2 + 1] = ry * k; }
+    }
+    relief.blur(p.reliefCoherence === undefined ? 10 : p.reliefCoherence, 2);
+
+    return { depth: depth, mask: dep.mask, grad: grad, relief: relief, w: w, h: h };
   }
 
   /* --------------------------------------------------------------------------
@@ -404,8 +504,11 @@ var CD = window.CD || {};
   CD.toneField = toneField;
   CD.buildDepth = buildDepth;
   CD.buildRegion = buildRegion;
+  CD.regionSource = regionSource;
+  CD.distanceDepth = distanceDepth;
   CD.wipeGeometry = wipeGeometry;
   CD.buildDepthFromValues = buildDepthFromValues;
+  CD.withDepth = withDepth;
   CD.buildFlow = buildFlow;
   CD.dirAt = dirAt;
   CD.contrastCurve = contrastCurve;

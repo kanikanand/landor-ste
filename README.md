@@ -33,6 +33,97 @@ clean depth map — a surface lit from the upper left — because that is what a
 real photograph looks like going in, and the pipeline has to recover depth
 from luminance either way.
 
+## Modes, and why there are only three
+
+The obvious reading of "interaction with imagery", "background to imagery",
+"revealing imagery", "gridded versus fluid" and "with and without imagery" is
+five modes. That is the wrong shape. They are not five points on one axis —
+they are one axis and three switches:
+
+| decision | options | what it settles |
+|---|---|---|
+| **Mode** | Surface · Fingerprint · Interaction | where the dots live relative to the subject |
+| **Fill** | Fluid · Grid | how they are laid out once they are there |
+| **Photograph** | on · off | whether the picture is present at all |
+| **Reveal** | on · off + position | the hand-over between picture and dots |
+
+Three by two by two by two is twenty-four looks out of four decisions, and
+every combination means something: a fingerprint can be gridded or fluid, a
+surface treatment can reveal or not, any of them can drop the photograph.
+Enumerated as presets that would have been twenty-four buttons, each going
+stale the moment a new fill or a new region source is added.
+
+**Surface** puts dots on the subject — the form drawn out of the picture, with
+Reveal handing it over. **Fingerprint** puts them outside it: the subject stays
+a photograph and the pattern becomes the ground it sits on. **Interaction**
+puts them in a band straddling the outline, so pattern and subject interlock
+rather than one sitting inside the other.
+
+Fingerprint and Interaction do not read the picture's tones for depth. They
+read **distance from the outline**, because contours of a distance field are
+offset curves of the silhouette — which is what makes the rings read as
+belonging to the subject rather than as a halftone of whatever is behind it.
+
+## Auto-tune: the controls that have a right answer
+
+Roughly a third of the panel was never aesthetic. Polarity, where the
+background ends, how far the subject's tones actually span, how much of the
+fine detail is noise rather than form — those have correct answers for a given
+plate, and the answers are recoverable from the plate. Leaving them as sliders
+meant every new image began by rediscovering them, and getting one wrong made
+every downstream control misbehave.
+
+Auto reads, in one pass: the border against the frame centre for **polarity**;
+border statistics and Otsu's threshold, whichever is higher, for **where the
+background ends**; the subject's own 2nd and 98th percentiles for **exposure
+and contrast**; and a Laplacian median for **noise**, which sets all three
+smoothing radii.
+
+Measured across nine plates of one subject — under- and over-exposed, flat and
+harsh contrast, dark-on-light, a grey ground, noisy, and heavily compressed:
+
+| | fixed defaults | auto |
+|---|---|---|
+| spread in subject coverage | **2.5×** | **1.0×** |
+| spread in depth range | 1.1× | 1.1× |
+| worst-case strand length | 66 | **90** |
+
+The coverage figure is the important one. With fixed defaults, four of the
+nine plates came out at 100% coverage — the silhouette had swallowed the whole
+frame, background included. Auto brings all nine to within half a percent of
+the true subject area, and its worst plate still draws longer strands than the
+best case of the fixed defaults.
+
+Two findings from building it, both of which are now load-bearing:
+
+- **Contrast amplifies noise.** The smoothing decision has to be made on the
+  noise as the flow field will see it, not as it arrives. Measured before this
+  was accounted for, the underexposed plate came out at a third the strand
+  length of the others: auto was setting clean-render smoothing on a field it
+  had just stretched by two.
+- **The contrast curve pivots on 0.5.** A subject sitting at 0.35 gets pushed
+  lower as it is stretched, and its shadow end clips to a flat zero — a region
+  with no gradient at all, where the flow field is degenerate. A new
+  **Exposure** step centres the subject first. On the underexposed plate that
+  recovered 40% of its tonal range and doubled the strand length.
+
+What auto deliberately does **not** touch: dot size, spacing, colour, fill
+mode, where the wipe sits. Those are choices, not measurements, and automating
+a choice only takes it away.
+
+The two sets are disjoint by construction — `Auto.OWNED` and `Presets.OWNED`
+share no key, and there is a test that says so. That is what lets a mode and a
+plate change independently: switching mode never disturbs the calibration, and
+loading an image never disturbs the mode.
+
+## The panel
+
+Eleven controls above the fold, forty-six behind **Advanced**. The eleven are
+the four decisions plus dot size, spacing and the two colours; everything else
+is still there, still live, and editing the same parameters the presets write.
+Auto's readings are written into those same controls rather than held
+somewhere private, so what it decided is visible and can be overridden.
+
 ## The idea
 
 The image is not treated as brightness to be halftoned. It is treated as a
@@ -535,6 +626,8 @@ js/shapes.js          the dot primitive, drawDot, SVG shape upload
 js/dots.js            contour + grid fills, edge dissolve, colour ramp
 js/svgexport.js       vector export
 js/depthmodel.js      Depth Anything V2 in the browser (transformers.js)
+js/presets.js         the three modes; look parameters only
+js/auto.js            reads the plate; image parameters only
 js/ui.js              declarative control schema + panel
 js/app.js             p5 sketch, pipeline orchestration, I/O
 vendor/p5.min.js      p5.js 1.9.4

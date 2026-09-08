@@ -16,7 +16,37 @@ var CD = window.CD || {};
 
   var SCHEMA = [
     {
-      group: 'Depth source', hint: 'Where field 1 comes from.',
+      group: 'Mode', hint: 'Four decisions. Everything below is optional.',
+      controls: [
+        { key: 'mode', label: 'Where the dots go', type: 'mode', def: 'surface',
+          stage: 'depth' },
+        { key: 'gridFill', label: 'How they are laid out', type: 'fill', def: false,
+          stage: 'dots' },
+        { key: 'autoTune', label: 'Auto-tune to the image', type: 'toggle', def: true,
+          stage: 'depth',
+          help: 'Reads polarity, background level, tonal range and noise off the ' +
+                'picture and sets the thresholds, contrast and smoothing to match. ' +
+                'Turn it off to set them yourself in Advanced.' },
+        { key: 'showPhoto', label: 'Show photograph', type: 'toggle', def: true,
+          stage: 'draw' },
+        { key: 'wipe', label: 'Reveal', type: 'toggle', def: true, stage: 'region',
+          help: 'Hands the subject from the photograph to the dots across a line.' },
+        { key: 'wipePosition', label: 'Reveal position', min: 0, max: 1, step: 0.01,
+          def: 0.45, stage: 'region' },
+        { key: 'wipeAngle', label: 'Reveal angle', min: 0, max: 360, step: 1, def: 0,
+          stage: 'region' },
+        { key: 'dotSize', label: 'Dot size', min: 0.3, max: 14, step: 0.1, def: 2.0,
+          stage: 'dots' },
+        { key: 'dotSpacing', label: 'Dot spacing', min: 1.5, max: 40, step: 0.25, def: 4,
+          stage: 'dots' },
+        { key: 'colorNear', label: 'Dot colour', type: 'color', def: '#ff2233',
+          stage: 'draw' },
+        { key: 'background', label: 'Background', type: 'color', def: '#000000',
+          stage: 'draw' }
+      ]
+    },
+    {
+      advanced: true, group: 'Depth source', hint: 'Where field 1 comes from.',
       controls: [
         { key: 'modelDepth', label: 'Estimate depth (Depth Anything V2)', type: 'toggle',
           def: false, stage: 'depth',
@@ -28,7 +58,7 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Silhouette', hint: 'Where the subject ends. Read before any relief smoothing.',
+      advanced: true, group: 'Silhouette', hint: 'Where the subject ends. Read before any relief smoothing.',
       controls: [
         { key: 'useAlpha', label: 'Use image alpha', type: 'toggle', def: true, stage: 'depth',
           help: 'A cutout carries an exact silhouette, including parts too dark ' +
@@ -51,7 +81,7 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Overlay', hint: 'Dot part of the subject; leave the rest showing.',
+      advanced: true, group: 'Overlay', hint: 'Dot part of the subject; leave the rest showing.',
       controls: [
         { key: 'showPhoto', label: 'Show photograph', type: 'toggle', def: false,
           stage: 'draw',
@@ -84,18 +114,23 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Image', hint: 'The photograph, before it becomes a surface.',
+      advanced: true, group: 'Image', hint: 'The photograph, before it becomes a surface.',
       controls: [
         { key: 'threshold', label: 'Depth floor', min: 0, max: 0.95, step: 0.01, def: 0.13, stage: 'depth',
           help: 'Where the relief starts from. Everything below flattens to zero ' +
                 'depth; the silhouette is cut separately, above.' },
+        { key: 'exposure', label: 'Exposure', min: -0.45, max: 0.45, step: 0.01, def: 0,
+          stage: 'depth',
+          help: 'Centres the subject before contrast stretches it. Off-centre ' +
+                'tones clip when stretched, and a clipped region has no gradient ' +
+                'for the contours to follow.' },
         { key: 'imageContrast', label: 'Contrast', min: 0.2, max: 4, step: 0.05, def: 1.35, stage: 'depth' },
         { key: 'invert', label: 'Invert depth', type: 'toggle', def: false, stage: 'depth',
           help: 'Use when the subject is lit dark-on-light.' }
       ]
     },
     {
-      group: 'Depth', hint: 'Field 1. Black is far, white is near.',
+      advanced: true, group: 'Depth', hint: 'Field 1. Black is far, white is near.',
       controls: [
         { key: 'depthExaggeration', label: 'Depth exaggeration', min: 0, max: 30, step: 0.1, def: 3, stage: 'dots',
           help: 'Shifts each dot along the smoothed relief field. This is the ' +
@@ -113,7 +148,7 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Contours', hint: 'Field 2. Flow runs along the iso-depth lines.',
+      advanced: true, group: 'Contours', hint: 'Field 2. Flow runs along the iso-depth lines.',
       controls: [
         { key: 'lineDensity', label: 'Line density', min: 0.2, max: 4, step: 0.05, def: 1, stage: 'lines' },
         { key: 'lineSpacing', label: 'Line spacing', min: 2, max: 60, step: 0.5, def: 9, stage: 'lines' },
@@ -127,7 +162,7 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Dots', hint: 'Oriented primitives, not particles.',
+      advanced: true, group: 'Dots', hint: 'Oriented primitives, not particles.',
       controls: [
         { key: 'gridFill', label: 'Grid fill', type: 'toggle', def: false, stage: 'dots',
           help: 'A lattice instead of dots strung along the contours. Reads as ' +
@@ -153,7 +188,7 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Depth mapping', hint: 'One signal, three channels. Spend it deliberately.',
+      advanced: true, group: 'Depth mapping', hint: 'One signal, three channels. Spend it deliberately.',
       controls: [
         { key: 'sizeDepth', label: 'Depth \u2192 size', min: 0, max: 1, step: 0.01, def: 1,
           stage: 'dots',
@@ -177,7 +212,7 @@ var CD = window.CD || {};
       ]
     },
     {
-      group: 'Colour', hint: 'Negative space stays black.',
+      advanced: true, group: 'Colour', hint: 'Negative space stays black.',
       controls: [
         { key: 'background', label: 'Background', type: 'color', def: '#000000', stage: 'draw' },
         { key: 'colorFar', label: 'Far colour', type: 'color', def: '#4a0410', stage: 'draw' },
@@ -195,7 +230,13 @@ var CD = window.CD || {};
     minLinePoints: 6,
     maxLineLength: 4000,
     flowNoiseScale: 1,
-    seed: 12345
+    seed: 12345,
+
+    /* Written by a preset rather than by a control, but never left undefined:
+     * a reset has to land somewhere valid before applyMode runs again. */
+    regionSource: 'subject',
+    fieldSource: 'image',
+    edgeBand: 12
   };
 
   function defaults() {
@@ -214,6 +255,17 @@ var CD = window.CD || {};
     return STAGES.indexOf(a) < STAGES.indexOf(b) ? a : b;
   }
 
+  /* A control can be shown in more than one place — the essentials up top and
+   * the full set below — and both have to move when the value changes, so a
+   * key maps to a list of setters rather than one. */
+  function addRef(refs, key, r) {
+    (refs[key] || (refs[key] = [])).push(r);
+  }
+
+  function setRef(refs, key, v) {
+    (refs[key] || []).forEach(function (r) { if (r.set) r.set(v); });
+  }
+
   function el(tag, cls, txt) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -225,6 +277,21 @@ var CD = window.CD || {};
   function buildPanel(root, params, onChange, hooks) {
     root.innerHTML = '';
     var refs = {};
+
+    /* Everything the four decisions already cover is folded away. It is all
+     * still here and still live — a preset writes into the same parameters
+     * these controls edit — but a first pass should not have to walk past
+     * thirty sliders to find the one that matters. */
+    var adv = el('section', 'advanced');
+    var advToggle = el('button', 'adv-toggle', 'Advanced controls');
+    var advBody = el('div', 'adv-body');
+    advBody.hidden = true;
+    advToggle.addEventListener('click', function () {
+      advBody.hidden = !advBody.hidden;
+      advToggle.classList.toggle('open', !advBody.hidden);
+    });
+    adv.appendChild(advToggle);
+    adv.appendChild(advBody);
 
     SCHEMA.forEach(function (g) {
       var sec = el('section', 'group');
@@ -248,7 +315,7 @@ var CD = window.CD || {};
           lab.appendChild(cb);
           lab.appendChild(el('span', null, c.label));
           row.appendChild(lab);
-          refs[c.key] = { set: function (v) { cb.checked = !!v; } };
+          addRef(refs, c.key, { set: function (v) { cb.checked = !!v; } });
 
         } else if (c.type === 'color') {
           var top = el('div', 'ctrl-top');
@@ -262,7 +329,52 @@ var CD = window.CD || {};
           });
           top.appendChild(ci);
           row.appendChild(top);
-          refs[c.key] = { set: function (v) { ci.value = v; } };
+          addRef(refs, c.key, { set: function (v) { ci.value = v; } });
+
+        } else if (c.type === 'mode') {
+          row.appendChild(el('label', null, c.label));
+          var mwrap = el('div', 'shape-row mode-row');
+          CD.Presets.ORDER.forEach(function (name) {
+            var mb = el('button', 'shape-btn', CD.Presets.MODES[name].label);
+            mb.dataset.mode = name;
+            mb.title = CD.Presets.MODES[name].hint;
+            mb.addEventListener('click', function () {
+              params[c.key] = name;
+              onChange(c.stage, c.key);
+            });
+            if (params[c.key] === name) mb.classList.add('on');
+            mwrap.appendChild(mb);
+          });
+          row.appendChild(mwrap);
+          var modeHint = el('p', 'help', CD.Presets.MODES[params[c.key]] ?
+            CD.Presets.MODES[params[c.key]].hint : '');
+          row.appendChild(modeHint);
+          addRef(refs, c.key, { set: function (v) {
+            mwrap.querySelectorAll('.shape-btn').forEach(function (o) {
+              o.classList.toggle('on', o.dataset.mode === v);
+            });
+            if (CD.Presets.MODES[v]) modeHint.textContent = CD.Presets.MODES[v].hint;
+          } });
+
+        } else if (c.type === 'fill') {
+          row.appendChild(el('label', null, c.label));
+          var fwrap = el('div', 'shape-row');
+          [['Fluid', false], ['Grid', true]].forEach(function (pair) {
+            var fb = el('button', 'shape-btn', pair[0]);
+            fb.dataset.fill = pair[1] ? 'grid' : 'fluid';
+            fb.addEventListener('click', function () {
+              params[c.key] = pair[1];
+              onChange(c.stage, c.key);
+            });
+            if (!!params[c.key] === pair[1]) fb.classList.add('on');
+            fwrap.appendChild(fb);
+          });
+          row.appendChild(fwrap);
+          addRef(refs, c.key, { set: function (v) {
+            fwrap.querySelectorAll('.shape-btn').forEach(function (o) {
+              o.classList.toggle('on', o.dataset.fill === (v ? 'grid' : 'fluid'));
+            });
+          } });
 
         } else if (c.type === 'shape') {
           row.appendChild(el('label', null, c.label));
@@ -297,7 +409,7 @@ var CD = window.CD || {};
           up.appendChild(upName);
           row.appendChild(up);
 
-          refs[c.key] = {
+          addRef(refs, c.key, {
             set: function (v) {
               wrap.querySelectorAll('.shape-btn').forEach(function (o) {
                 o.classList.toggle('on', o.dataset.shape === v);
@@ -307,7 +419,7 @@ var CD = window.CD || {};
               customBtn.disabled = false;
               upName.textContent = name;
             }
-          };
+          });
 
         } else {
           var t2 = el('div', 'ctrl-top');
@@ -326,25 +438,28 @@ var CD = window.CD || {};
             onChange(c.stage, c.key);
           });
           row.appendChild(sl);
-          refs[c.key] = {
+          addRef(refs, c.key, {
             set: function (v) { sl.value = v; val.textContent = fmt(v, c.step); }
-          };
+          });
         }
 
         if (c.help) row.appendChild(el('p', 'help', c.help));
         sec.appendChild(row);
       });
 
-      root.appendChild(sec);
+      (g.advanced ? advBody : root).appendChild(sec);
     });
+    root.appendChild(adv);
 
     return {
       refs: refs,
+      set: function (key, v) { setRef(refs, key, v); },
+      call: function (key, fn) {
+        (refs[key] || []).forEach(function (r) { if (r[fn]) r[fn].apply(null, [].slice.call(arguments, 2)); });
+      },
       syncAll: function () {
-        SCHEMA.forEach(function (g) {
-          g.controls.forEach(function (c) {
-            if (refs[c.key] && refs[c.key].set) refs[c.key].set(params[c.key]);
-          });
+        Object.keys(refs).forEach(function (k) {
+          if (params[k] !== undefined) setRef(refs, k, params[k]);
         });
       }
     };

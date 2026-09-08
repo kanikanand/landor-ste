@@ -25,6 +25,7 @@ var CD = window.CD || {};
     fieldW: 0, fieldH: 0, fieldScale: 1,
     dep: null, region: null, tone: null, flow: null, lines: [], dots: [],
     hasAlpha: false,     // the source carries its own silhouette
+    auto: null,          // what the tuner read off the plate
     modelDepth: null,    // {data,w,h,ms,backend} estimated depth for srcCanvas
     modelBusy: false,
     modelToken: 0,       // bumped on every new image, to drop stale estimates
@@ -143,6 +144,8 @@ var CD = window.CD || {};
     state.modelBusy = false;
     state.modelToken++;
 
+    if (state.params.autoTune) runAuto();
+
     markDirty('depth');
     if (state.params.modelDepth) ensureModelDepth();
   }
@@ -208,6 +211,18 @@ var CD = window.CD || {};
     }
 
     state.dep = CD.buildDepth(px, fw, fh, p, alpha);
+    applyFieldSource(p);
+  }
+
+  /* Fingerprint and interaction do not read the picture's tones for depth —
+   * they read distance from the outline, so the contours come out as offsets
+   * of the subject rather than as a halftone of whatever is behind it. The
+   * silhouette is unchanged; only the surface the contours follow is. */
+  function applyFieldSource(p) {
+    if (p.fieldSource !== 'distance' || !state.dep) return;
+    var d = CD.distanceDepth(state.dep.mask, state.dep.w, state.dep.h,
+                             Math.max(4, (p.edgeBand || 12) * 1.6));
+    state.dep = CD.withDepth(state.dep, d, p);
   }
 
   /* Field 3. The silhouette the depth threshold carved, narrowed to the area
@@ -378,6 +393,41 @@ var CD = window.CD || {};
   }
 
   /* ==========================================================================
+   * Auto-tune
+   * ========================================================================*/
+
+  /* Read the plate and set the parameters that have a right answer for it.
+   * Runs once per image rather than per render — nothing here depends on a
+   * slider — and writes into the same params the Advanced panel edits, so
+   * what it decided is visible and can be overridden rather than hidden. */
+  function runAuto() {
+    if (!state.srcCanvas || !CD.Auto || !state.fieldW) return;
+    var fw = state.fieldW, fh = state.fieldH;
+    var c = document.createElement('canvas');
+    c.width = fw; c.height = fh;
+    var g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(state.srcCanvas, 0, 0, fw, fh);
+    var px = g.getImageData(0, 0, fw, fh).data;
+
+    var alpha = state.params.useAlpha === false ? null : CD.alphaCoverage(px, fw * fh);
+    var t = CD.Auto.tune(px, fw, fh, alpha);
+    state.auto = t;
+    CD.Auto.OWNED.forEach(function (k) {
+      if (t[k] !== undefined) state.params[k] = t[k];
+    });
+    if (ui) ui.syncAll();
+  }
+
+  /* Mode and fill are look decisions; auto owns the image decisions. The two
+   * sets are disjoint, so this never disturbs the calibration. */
+  function applyMode() {
+    CD.Presets.applyMode(state.params, state.params.mode, state.params.gridFill);
+    if (ui) ui.syncAll();
+  }
+
+  /* ==========================================================================
    * Depth model
    * ========================================================================*/
 
@@ -425,7 +475,7 @@ var CD = window.CD || {};
    * badly rather than as the model not being there. */
   function failModelDepth(msg) {
     state.params.modelDepth = false;
-    if (ui && ui.refs.modelDepth) ui.refs.modelDepth.set(false);
+    if (ui) ui.set('modelDepth', false);
     status(msg, true);
     markDirty('depth');
   }
@@ -520,6 +570,11 @@ var CD = window.CD || {};
       state.dots.length.toLocaleString() + ' dots · ' +
       Math.round(state.timing[quality] || 0) + ' ms' +
       (state.hasAlpha && state.params.useAlpha !== false ? ' · alpha silhouette' : '') +
+      (state.params.autoTune && state.auto
+        ? ' · auto: noise ' + state.auto._noise.toFixed(3) +
+          ', range ' + state.auto._range.toFixed(2) +
+          (state.auto.invert ? ', inverted' : '')
+        : '') +
       (quality === 'draft' ? ' (preview)' : '');
   }
 
@@ -577,8 +632,8 @@ var CD = window.CD || {};
           var shape = CD.shapeFromSVG(fr.result, f.name);
           CD.setCustomShape(shape);
           state.params.shapeType = 'custom';
-          if (ui.refs.shapeType.customLoaded) ui.refs.shapeType.customLoaded(f.name);
-          ui.refs.shapeType.set('custom');
+          ui.call('shapeType', 'customLoaded', f.name);
+          ui.set('shapeType', 'custom');
           markDirty('draw');
           status('Dot shape set from ' + f.name);
         } catch (e) {
@@ -601,6 +656,8 @@ var CD = window.CD || {};
       var seed = state.params.seed;
       state.params = CD.UI.defaults();
       state.params.seed = seed;
+      applyMode();
+      if (state.params.autoTune) runAuto();
       ui.syncAll();
       markDirty('depth');
       status('Controls reset');
@@ -656,11 +713,14 @@ var CD = window.CD || {};
         /* Switching the model on is the one control that has to fetch
          * something before its stage can be rebuilt. */
         if (key === 'modelDepth' && state.params.modelDepth) ensureModelDepth();
+        if (key === 'mode' || key === 'gridFill') applyMode();
+        if (key === 'autoTune' && state.params.autoTune) runAuto();
         markDirty(stage);
       },
       { pickShape: function () { document.getElementById('shapeInput').click(); } });
 
     wireChrome();
+    applyMode();
     setSource(makeSampleImage(), 'sample');
     status('Drop an image anywhere, or load one. Drop an SVG to set the dot shape.');
   };
